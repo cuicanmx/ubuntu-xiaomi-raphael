@@ -6,8 +6,8 @@
 set -e
 
 # Default configuration
-KERNEL_VERSION="6.17"
-RELEASE_TAG="v6.17"
+KERNEL_VERSION="6.18"
+RELEASE_TAG="v6.18"
 DISTRIBUTION="ubuntu"
 DESKTOP_ENVIRONMENT="none"
 KERNEL_SOURCE="release"

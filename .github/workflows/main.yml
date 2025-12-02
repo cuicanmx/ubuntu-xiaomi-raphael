@@ -11,10 +11,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version reference (e.g., 6.17)'
+        description: 'Kernel version and release tag (e.g., 6.18)'
         required: true
         type: string
-        default: '6.17'
+        default: '6.18'
       distribution:
         description: 'Distribution to build (ubuntu/armbian)'
         required: true
@@ -40,11 +40,6 @@ on:
           - release
           - artifacts
         default: release
-      release_tag:
-        description: 'Release tag for kernel packages (e.g., v6.17)'
-        required: false
-        default: 'v6.17'
-        type: string
       desktop_environment:
         description: 'Desktop environment to install (only for ubuntu)'
         required: false
@@ -60,7 +55,7 @@ env:
   KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
   DISTRIBUTION: ${{ github.event.inputs.distribution }}
   KERNEL_SOURCE: ${{ github.event.inputs.kernel_source }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+  RELEASE_TAG: v${{ github.event.inputs.kernel_version }}
   DESKTOP_ENVIRONMENT: ${{ github.event.inputs.desktop_environment }}
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel

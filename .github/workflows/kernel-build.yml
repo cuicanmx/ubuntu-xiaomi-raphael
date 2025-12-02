@@ -4,15 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version reference (e.g., 6.17)'
+        description: 'Kernel version and release tag (e.g., 6.18)'
         required: true
         type: string
-        default: '6.17'
-      release_tag:
-        description: 'Release tag for the kernel package'
-        required: true
-        type: string
-        default: 'v6.17'
+        default: '6.18'
       upload_to_release:
         description: 'Upload kernel packages to GitHub Release'
         required: false
@@ -21,7 +16,7 @@ on:
 
 env:
   KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+  RELEASE_TAG: v${{ github.event.inputs.kernel_version }}
 
 jobs:
   build-kernel:
@@ -95,7 +90,7 @@ jobs:
         max_attempts: 3
         command: |
           chmod +x ./raphael-kernel_build.sh
-          ./raphael-kernel_build.sh --kernel-version "$KERNEL_VERSION" --verbose
+          ./raphael-kernel_build.sh "$KERNEL_VERSION"
         
     - name: Collect build metrics
       run: |
