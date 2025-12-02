@@ -88,6 +88,8 @@ jobs:
          
     - name: Download kernel packages from GitHub Release
       if: ${{ github.event.inputs.kernel_source == 'release' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         echo "📥 Downloading kernel packages from GitHub Release: $RELEASE_TAG"
         
