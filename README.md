@@ -39,6 +39,7 @@
    - `kernel_version`: 内核版本 (默认: 6.17)
    - `distribution`: 发行版选择 (Ubuntu/Armbian，默认: Ubuntu)
    - `desktop_environment`: 桌面环境或服务器版 (支持: ubuntu-desktop、kubuntu-desktop、xubuntu-desktop、lubuntu-desktop、ubuntu-mate、gnome、kde、xfce、lxde、mate、server等，默认: ubuntu-desktop)
+   - `skip_kernel_build`: 跳过内核编译 (使用现有设备包，默认: false)
    - `release_tag`: 发布标签 (默认: v1.0.0)
 4. **监控构建进度**: 查看Actions日志实时监控构建过程
 5. **下载镜像**: 构建完成后，在Releases页面下载生成的镜像文件
@@ -63,6 +64,10 @@ sudo bash ./raphael-rootfs_build.sh ubuntu ubuntu-desktop 6.17
 
 # Armbian构建
 sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0
+
+# 跳过内核编译，使用现有设备包
+sudo bash ./raphael-rootfs_build.sh ubuntu noble 6.17.0 ubuntu-desktop --skip-kernel-build
+sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0 --skip-kernel-build
 ```
 
 ## ?? 构建指南
@@ -100,6 +105,7 @@ sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0
    - **Version**: 选择版本 (noble/jammy/focal)
    - **Desktop environment**: 选择桌面环境 (仅Ubuntu需要)
    - **Kernel version**: 输入内核版本 (默认: 6.17.0)
+   - **Skip kernel build**: 跳过内核编译 (使用现有设备包，默认: false)
 4. **开始构建**: 点击"Run workflow"按钮
 
 ## ? 支持的发行版和桌面环境

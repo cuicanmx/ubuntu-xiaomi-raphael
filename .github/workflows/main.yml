@@ -387,26 +387,48 @@ jobs:
           echo "? Version: ${{ github.event.inputs.version }}"
           echo "?? Desktop: ${{ github.event.inputs.desktop_environment }}"
           echo "? Kernel: ${{ github.event.inputs.kernel_version }}"
+          echo "? Skip Kernel Build: ${{ github.event.inputs.skip_kernel_build }}"
           
           # Build rootfs with enhanced script
           # For Armbian, desktop_environment is not used and can be empty
           if [ "${{ github.event.inputs.distribution }}" = "armbian" ]; then
-            if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }}; then
-              echo "? Armbian RootFS build failed!"
-              exit 1
+            if [ "${{ github.event.inputs.skip_kernel_build }}" = "true" ]; then
+              if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} --skip-kernel-build; then
+                echo "? Armbian RootFS build failed!"
+                exit 1
+              fi
+            else
+              if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }}; then
+                echo "? Armbian RootFS build failed!"
+                exit 1
+              fi
             fi
           else
             # For Ubuntu, pass desktop_environment (if not empty)
             if [ -n "${{ github.event.inputs.desktop_environment }}" ] && [ "${{ github.event.inputs.desktop_environment }}" != "''" ]; then
-              if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ${{ github.event.inputs.desktop_environment }}; then
-                echo "? Ubuntu RootFS build failed!"
-                exit 1
+              if [ "${{ github.event.inputs.skip_kernel_build }}" = "true" ]; then
+                if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ${{ github.event.inputs.desktop_environment }} --skip-kernel-build; then
+                  echo "? Ubuntu RootFS build failed!"
+                  exit 1
+                fi
+              else
+                if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ${{ github.event.inputs.desktop_environment }}; then
+                  echo "? Ubuntu RootFS build failed!"
+                  exit 1
+                fi
               fi
             else
               # Use default desktop environment for Ubuntu
-              if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ubuntu-desktop; then
-                echo "? Ubuntu RootFS build failed!"
-                exit 1
+              if [ "${{ github.event.inputs.skip_kernel_build }}" = "true" ]; then
+                if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ubuntu-desktop --skip-kernel-build; then
+                  echo "? Ubuntu RootFS build failed!"
+                  exit 1
+                fi
+              else
+                if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ubuntu-desktop; then
+                  echo "? Ubuntu RootFS build failed!"
+                  exit 1
+                fi
               fi
             fi
           fi
