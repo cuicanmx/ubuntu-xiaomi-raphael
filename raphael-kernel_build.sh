@@ -67,6 +67,12 @@ parse_arguments() {
     KERNEL_VERSION="${KERNEL_VERSION_DEFAULT}"
     CACHE_ENABLED="${CACHE_ENABLED_DEFAULT:-false}"
     
+    # If only one argument and it's not an option, treat it as kernel version
+    if [[ $# -eq 1 && ! "$1" =~ ^- ]]; then
+        KERNEL_VERSION="$1"
+        shift 1
+    fi
+    
     while [[ $# -gt 0 ]]; do
         case $1 in
             -v|--version)
