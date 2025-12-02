@@ -6,8 +6,8 @@
 set -e
 
 # Default configuration
-KERNEL_VERSION="6.1.80"
-RELEASE_TAG="v6.1.80"
+KERNEL_VERSION="6.18.0"
+RELEASE_TAG="v6.18.0"
 DISTRIBUTION="ubuntu"
 DESKTOP_ENVIRONMENT="none"
 KERNEL_SOURCE="release"
@@ -38,9 +38,9 @@ usage() {
 # Function to validate version format
 validate_version() {
     local version=$1
-    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
         echo "❌ Invalid version format: $version"
-        echo "   Expected format: X.Y.Z (e.g., 6.1.80)"
+        echo "   Expected format: X.Y or X.Y.Z (e.g., 6.18 or 6.1.80)"
         exit 1
     fi
 }
@@ -48,9 +48,9 @@ validate_version() {
 # Function to validate release tag format
 validate_tag() {
     local tag=$1
-    if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
         echo "❌ Invalid release tag format: $tag"
-        echo "   Expected format: vX.Y.Z (e.g., v6.1.80)"
+        echo "   Expected format: vX.Y or vX.Y.Z (e.g., v6.18 or v6.1.80)"
         exit 1
     fi
 }
