@@ -7,28 +7,66 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/build-config.sh"
 
-# Global variables
+# ----------------------------- 
+# Global Variables
+# ----------------------------- 
+
+# Paths
+WORKING_DIR=$(pwd)
+
+# Rootfs configuration
+ROOTFS_SIZE="6G"
 ROOTFS_IMG="rootfs.img"
 ROOTDIR="rootdir"
-SKIP_KERNEL_BUILD=false
-DISTRO=""
-VERSION=""
-KERNEL_VERSION=""
+
+# Default cache settings
+USE_CACHE="true"
+
+# Kernel build settings
+SKIP_KERNEL_BUILD="true"
+
+# Ubuntu desktop environments
+UBUNTU_DESKTOP_ENVS=("ubuntu-desktop" "kubuntu-desktop" "xubuntu-desktop" "lubuntu-desktop" "mate-desktop" "budgie-desktop")
+
+# Default desktop environment for Ubuntu
 DESKTOP_ENV=""
-USE_CACHE="${CACHE_ENABLED_DEFAULT}"
+
+# Distribution settings (hardcoded as per requirements)
+DISTRO="ubuntu"
+VERSION="noble"
+KERNEL_VERSION="6.18"
+
+# ----------------------------- 
+# Logging Functions
+# ----------------------------- 
+log_info() {
+    echo -e "[INFO] $1"
+}
+
+log_success() {
+    echo -e "[SUCCESS] $1"
+}
+
+log_warning() {
+    echo -e "[WARNING] $1"
+}
+
+log_error() {
+    echo -e "[ERROR] $1"
+}
 
 # Error handling function
 handle_error() {
     local message=$1
     local exit_code=${2:-1}
-    echo "❌ $message"
+    log_error "$message"
     cleanup
     exit $exit_code
 }
 
 # Cleanup function
 cleanup() {
-    echo "🧹 Cleaning up..."
+    log_info "Cleaning up..."
     
     # Unmount filesystems if mounted
     if mountpoint -q "$ROOTDIR/sys" 2>/dev/null; then
@@ -60,54 +98,52 @@ cleanup() {
 
 # Parse command line arguments
 parse_arguments() {
-    if [ $# -lt 3 ]; then
-        echo "Usage: $0 <distribution> <version> <kernel_version> [desktop_environment] [--skip-kernel-build] [--cache|--no-cache]"
-        echo "  distribution: ubuntu|armbian"
-        echo "  version: for ubuntu: version name, for armbian: noble"
-        echo "  kernel_version: e.g., 6.17"
-        echo "  desktop_environment: (optional) for ubuntu only"
-        echo "  --skip-kernel-build: (optional) use existing device packages instead of building kernel"
-        echo "  --cache: (optional) use cache for base system download"
-        echo "  --no-cache: (optional) disable cache"
-        exit 1
-    fi
-
-    DISTRO=$1
-    VERSION=$2
-    KERNEL_VERSION=$3
+    log_info "Parsing command-line arguments..."
     
-    # Parse optional arguments
-    for arg in "${@:4}"; do
-        case "$arg" in
-            "--skip-kernel-build")
-                SKIP_KERNEL_BUILD=true
+    # Set default values
+    USE_CACHE="true"
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --cache)
+                USE_CACHE="true"
+                shift 1
                 ;;
-            "--cache")
-                USE_CACHE=true
+            --no-cache)
+                USE_CACHE="false"
+                shift 1
                 ;;
-            "--no-cache")
-                USE_CACHE=false
+            -h|--help)
+                show_help
+                exit 0
                 ;;
             *)
-                if [ "$DISTRO" = "ubuntu" ] && [ -z "$DESKTOP_ENV" ]; then
-                    DESKTOP_ENV="$arg"
-                fi
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
                 ;;
         esac
     done
     
-    # Set default desktop environment for Ubuntu if not provided
-    if [ "$DISTRO" = "ubuntu" ] && [ -z "$DESKTOP_ENV" ]; then
-        DESKTOP_ENV="ubuntu-desktop"
-    fi
-    
-    echo "✅ Parsed arguments: Distribution=$DISTRO, Version=$VERSION, Kernel=$KERNEL_VERSION"
-    if [ "$DISTRO" = "ubuntu" ]; then
-        echo "✅ Desktop environment: $DESKTOP_ENV"
-    fi
-    echo "✅ Skip kernel build: $SKIP_KERNEL_BUILD"
-    echo "✅ Use cache: $USE_CACHE"
-    echo "✅ Use cache: $USE_CACHE"
+    log_success "Arguments parsed successfully"
+    log_info "Cache enabled: $USE_CACHE"
+}
+
+# Show help information
+show_help() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Build rootfs for Xiaomi K20 Pro (Raphael)
+
+OPTIONS:
+    --cache                  Enable cache for base system download
+    --no-cache               Disable cache
+    -h, --help               Show this help message
+
+EXAMPLE:
+    $0 --cache
+EOF
 }
 
 # Validate distribution and version
