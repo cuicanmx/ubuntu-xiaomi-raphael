@@ -23,8 +23,8 @@ git clone https://github.com/GengWei1997/linux.git --branch raphael-$KERNEL_VERS
 cd linux
 
 # 设置内核配置
-echo "Configuring kernel..."
-make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig sm8150.config
+ echo "Configuring kernel..."
+ make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- sm8150.config
 
 # 构建内核
 echo "Building kernel..."

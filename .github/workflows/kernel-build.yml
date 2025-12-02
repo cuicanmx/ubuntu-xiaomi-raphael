@@ -14,176 +14,59 @@ on:
         type: boolean
         default: true
 
-env:
-  KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
-  RELEASE_TAG: v${{ github.event.inputs.kernel_version }}
-
-jobs:
-  build-kernel:
-    name: Build Kernel Packages
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+  jobs:
+    build-kernel:
+      name: Build Kernel Packages
+      runs-on: ubuntu-latest
       
-    - name: Setup environment
-      run: |
-        echo "Building kernel version: $KERNEL_VERSION"
-        echo "Release tag: $RELEASE_TAG"
+      steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
         
-    - name: Setup inputs
-      run: |
-        echo "🚀 Starting kernel build with version: $KERNEL_VERSION"
-        echo "📦 Release tag: $RELEASE_TAG"
-        
-    - name: Check available disk space
-      run: |
-        df -h
-        AVAILABLE_SPACE=$(df / --output=avail | tail -1 | tr -d ' ')
-        echo "Available disk space: ${AVAILABLE_SPACE}KB"
-        
-        # Require at least 10GB for kernel build
-        if [ "$AVAILABLE_SPACE" -lt 10000000 ]; then
-          echo "❌ Insufficient disk space for kernel build"
-          exit 1
-        fi
-        
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libncurses-dev \
-          bison \
-          flex \
-          libssl-dev \
-          libelf-dev \
-          bc \
-          git \
-          wget \
-          curl \
-          debootstrap \
-          qemu-user-static \
-          binfmt-support \
-          fakeroot \
-          cpio \
-          kmod \
-          rsync \
-          gcc-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu
-          
-    - name: Cache kernel build artifacts
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.ccache
-          kernel-build/
-          linux-xiaomi-raphael/
-        key: ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-${{ hashFiles('raphael-kernel_build.sh', 'linux-xiaomi-raphael/DEBIAN/control') }}
-        restore-keys: |
-          ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}
-          ${{ runner.os }}-kernel-
-        
-    - name: Build kernel packages with retry
-      uses: nick-fields/retry@v2
-      with:
-        timeout_minutes: 30
-        max_attempts: 3
-        command: |
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            bison \
+            flex \
+            libssl-dev \
+            bc \
+            git \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+            
+      - name: Build kernel packages
+        run: |
           chmod +x ./raphael-kernel_build.sh
-          ./raphael-kernel_build.sh "$KERNEL_VERSION"
-        
-    - name: Collect build metrics
-      run: |
-        echo "## Build Metrics" >> $GITHUB_STEP_SUMMARY
-        echo "- Kernel Version: $KERNEL_VERSION" >> $GITHUB_STEP_SUMMARY
-        echo "- Build Time: $(date -u)" >> $GITHUB_STEP_SUMMARY
-        echo "- Runner: ${{ runner.os }}" >> $GITHUB_STEP_SUMMARY
-        
-        # 计算构建时间（示例）
-        START_TIME=${{ job.steps.build-kernel.outputs.start_time }}
-        END_TIME=$(date +%s)
-        DURATION=$((END_TIME - START_TIME))
-        echo "- Duration: ${DURATION} seconds" >> $GITHUB_STEP_SUMMARY
-        
-    - name: Verify kernel packages
-      run: |
-        echo "🔍 Verifying generated kernel packages:"
-        ls -la *.deb || echo "No DEB packages found"
-        
-        # Check for required kernel packages
-        REQUIRED_PACKAGES=("linux-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb" 
-                          "firmware-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb"
-                          "alsa-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb")
-        
-        for pkg in "${REQUIRED_PACKAGES[@]}"; do
-          if [ -f "$pkg" ]; then
-            echo "✅ Found: $pkg"
-            # Verify package structure
-            dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
-          else
-            echo "❌ Missing: $pkg"
-            exit 1
-          fi
-        done
-        
-    - name: Create release tag
-      if: github.event.inputs.upload_to_release == 'true'
-      uses: actions/create-github-app-token@v1
-      id: app-token
-      with:
-        app-id: ${{ vars.APP_ID }}
-        private-key: ${{ secrets.APP_PRIVATE_KEY }}
-        
-    - name: Upload kernel packages to release
-      if: github.event.inputs.upload_to_release == 'true'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ github.event.inputs.release_tag }}
-        name: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
-        body: |
-          # Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael
+          ./raphael-kernel_build.sh "${{ github.event.inputs.kernel_version }}"
           
-          ## Package Contents
-          - **linux-xiaomi-raphael**: Main kernel package
-          - **firmware-xiaomi-raphael**: Firmware files
-          - **alsa-xiaomi-raphael**: Audio drivers
+      - name: Verify kernel packages
+        run: |
+          echo "🔍 Verifying generated kernel packages:"
+          ls -la *.deb || echo "No DEB packages found"
           
-          ## Usage
-          These packages are designed for use with the Raphael rootfs build system.
+      - name: Upload kernel packages to release
+        if: github.event.inputs.upload_to_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.kernel_version }}
+          name: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+          body: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+          files: |
+            linux-xiaomi-raphael_*.deb
+            firmware-xiaomi-raphael_*.deb
+            alsa-xiaomi-raphael_*.deb
+          draft: false
+          prerelease: false
           
-          ## Build Information
-          - Kernel Version: ${{ github.event.inputs.kernel_version }}
-          - Architecture: ARM64
-          - Target Device: Xiaomi Raphael (K20 Pro)
-          
-        files: |
-          linux-xiaomi-raphael_*.deb
-          firmware-xiaomi-raphael_*.deb
-          alsa-xiaomi-raphael_*.deb
-        draft: false
-        prerelease: false
-        token: ${{ steps.app-token.outputs.token }}
-        
-    - name: Upload kernel packages as artifacts
-      if: github.event.inputs.upload_to_release != 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-packages-${{ github.event.inputs.kernel_version }}
-        path: |
-          linux-xiaomi-raphael_*.deb
-          firmware-xiaomi-raphael_*.deb
-          alsa-xiaomi-raphael_*.deb
-        retention-days: 30
-        
-    - name: Display build summary
-      run: |
-        echo "🎉 Kernel build completed successfully!"
-        echo "📦 Kernel Version: $KERNEL_VERSION"
-        echo "🏷️  Release Tag: $RELEASE_TAG"
-        if [ "${{ github.event.inputs.upload_to_release }}" = "true" ]; then
-          echo "📤 Packages uploaded to GitHub Release: $RELEASE_TAG"
-        else
-          echo "📦 Packages saved as workflow artifacts"
-        fi
+      - name: Upload kernel packages as artifacts
+        if: github.event.inputs.upload_to_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-packages-${{ github.event.inputs.kernel_version }}
+          path: |
+            linux-xiaomi-raphael_*.deb
+            firmware-xiaomi-raphael_*.deb
+            alsa-xiaomi-raphael_*.deb
+          retention-days: 30
