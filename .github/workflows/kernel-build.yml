@@ -83,16 +83,39 @@ jobs:
           kmod \
           rsync
           
-    - name: Setup ccache for faster builds
-      uses: hendrikmuhs/ccache-action@v1.2
+    - name: Cache kernel build artifacts
+      uses: actions/cache@v3
       with:
-        key: kernel-${{ github.event.inputs.kernel_version }}
-        max-size: 500M
+        path: |
+          ~/.ccache
+          kernel-build/
+          linux-xiaomi-raphael/
+        key: ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-${{ hashFiles('raphael-kernel_build.sh', 'linux-xiaomi-raphael/DEBIAN/control') }}
+        restore-keys: |
+          ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}
+          ${{ runner.os }}-kernel-
         
-    - name: Build kernel packages
+    - name: Build kernel packages with retry
+      uses: nick-fields/retry@v2
+      with:
+        timeout_minutes: 30
+        max_attempts: 3
+        command: |
+          chmod +x ./raphael-kernel_build.sh
+          ./raphael-kernel_build.sh --kernel-version "$KERNEL_VERSION" --verbose
+        
+    - name: Collect build metrics
       run: |
-        chmod +x ./raphael-kernel_build.sh
-        ./raphael-kernel_build.sh --kernel-version "$KERNEL_VERSION" --verbose
+        echo "## Build Metrics" >> $GITHUB_STEP_SUMMARY
+        echo "- Kernel Version: $KERNEL_VERSION" >> $GITHUB_STEP_SUMMARY
+        echo "- Build Time: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "- Runner: ${{ runner.os }}" >> $GITHUB_STEP_SUMMARY
+        
+        # 计算构建时间（示例）
+        START_TIME=${{ job.steps.build-kernel.outputs.start_time }}
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        echo "- Duration: ${DURATION} seconds" >> $GITHUB_STEP_SUMMARY
         
     - name: Verify kernel packages
       run: |
