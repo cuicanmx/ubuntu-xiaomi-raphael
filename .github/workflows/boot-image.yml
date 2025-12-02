@@ -1,0 +1,132 @@
+name: Boot Image Creation
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Kernel version for boot image (e.g., 6.18)'
+        required: true
+        type: string
+        default: '6.18'
+      distribution:
+        description: 'Distribution to use (ubuntu/armbian)'
+        required: true
+        type: string
+        default: 'ubuntu'
+
+env:
+  KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
+  DISTRIBUTION: ${{ github.event.inputs.distribution }}
+  RELEASE_TAG: v${{ github.event.inputs.kernel_version }}
+
+jobs:
+  create-boot-image:
+    name: Create Boot Image
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup environment
+      run: |
+        echo "🔧 Creating boot image for $DISTRO with kernel $KERNEL_VERSION"
+        echo "🏷️ Release tag: $RELEASE_TAG"
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          wget \
+          curl \
+          parted \
+          dosfstools \
+          e2fsprogs \
+          mtools \
+          qemu-user-static \
+          binfmt-support \
+          fakeroot \
+          cpio \
+          kmod \
+          rsync
+          
+    - name: Download rootfs image
+      run: |
+        echo " Downloading rootfs image..."
+        
+        # 从GitHub Release下载rootfs镜像
+        gh release download $RELEASE_TAG \
+          --pattern "root-*$DISTRIBUTION*.img" \
+          --repo ${{ github.repository }} || {
+          echo "⚠️ Failed to download rootfs from release, trying artifacts"
+          # 从工作流产物下载
+          gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
+            echo "❌ No rootfs image found"
+            exit 1
+          }
+        }
+        
+        ROOTFS_IMG=$(ls root-*.img | head -1)
+        if [ -z "$ROOTFS_IMG" ]; then
+          echo "❌ No rootfs image found"
+          exit 1
+        fi
+        
+        echo "✅ Rootfs image: $ROOTFS_IMG"
+        
+    - name: Build boot image using script
+      run: |
+        echo "🔧 Building boot image using raphael-boot_build.sh..."
+        
+        # 给脚本执行权限
+        chmod +x raphael-boot_build.sh
+        
+        # 执行boot镜像构建脚本
+        ./raphael-boot_build.sh \
+          --kernel-version "$KERNEL_VERSION" \
+          --distribution "$DISTRIBUTION" \
+          --rootfs-image "$ROOTFS_IMG" \
+          --output "xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        
+        echo "✅ Boot image built successfully"
+        
+    - name: Upload boot image to release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: "Boot Image ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+        body: |
+          # Boot Image ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael
+          
+          ## Image Details
+          - **Distribution**: ${{ github.event.inputs.distribution }}
+          - **Kernel Version**: ${{ github.event.inputs.kernel_version }}
+          - **RootFS UUID**: ${{ env.ROOTFS_UUID }}
+          
+          ## Usage
+          Flash this boot image to the boot partition of your Xiaomi K20 Pro device.
+          
+          ## Boot Configuration
+          The image contains a properly configured systemd-boot loader with:
+          - Linux kernel (linux.efi)
+          - Initramfs (initramfs)
+          - Root filesystem UUID: ${{ env.ROOTFS_UUID }}
+          
+        files: xiaomi-k20pro-boot-*.img
+        draft: false
+        prerelease: false
+        
+    - name: Upload boot image as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: boot-image-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}
+        path: xiaomi-k20pro-boot-*.img
+        retention-days: 30
+        
+    - name: Display build summary
+      run: |
+        echo "🎉 Boot image creation completed successfully!"
+        echo "📦 Distribution: $DISTRIBUTION"
+        echo "🔧 Kernel Version: $KERNEL_VERSION"
+        echo "🔑 RootFS UUID: ${{ env.ROOTFS_UUID }}"
+        echo "📤 Boot image uploaded to GitHub Release: $RELEASE_TAG"
