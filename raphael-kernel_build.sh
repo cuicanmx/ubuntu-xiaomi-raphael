@@ -277,27 +277,28 @@ create_kernel_package() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Use the exact commands from user's requirements
-    mkdir -p ../linux-xiaomi-raphael/boot
+    # Use the exact commands from user's requirements with correct paths
+    local DEB_PACKAGE_DIR="${WORKING_DIR}/linux-xiaomi-raphael"
+    mkdir -p "${DEB_PACKAGE_DIR}/boot"
     
     # Copy kernel image and DTB
-    cp arch/arm64/boot/Image.gz ../linux-xiaomi-raphael/boot/vmlinuz-$_kernel_version
-    cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb ../linux-xiaomi-raphael/boot/dtb-$_kernel_version
+    cp arch/arm64/boot/Image.gz "${DEB_PACKAGE_DIR}/boot/vmlinuz-$_kernel_version"
+    cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
     
     # Update control file version
-    sed -i "s/Version:.*/Version: ${_kernel_version}/" ../linux-xiaomi-raphael/DEBIAN/control
+    sed -i "s/Version:.*/Version: ${_kernel_version}/" "${DEB_PACKAGE_DIR}/DEBIAN/control"
     
     # Remove old lib directory if exists
-    rm -rf ../linux-xiaomi-raphael/lib 2>/dev/null || true
+    rm -rf "${DEB_PACKAGE_DIR}/lib" 2>/dev/null || true
     
     # Install modules
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=../linux-xiaomi-raphael modules_install
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
     
     # Remove build symlinks
-    rm -rf ../linux-xiaomi-raphael/lib/modules/**/build 2>/dev/null || true
+    rm -rf "${DEB_PACKAGE_DIR}/lib/modules/**/build" 2>/dev/null || true
     
     # Build all packages
-    cd ..
+    cd "${WORKING_DIR}"
     
     # Build the kernel package
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
