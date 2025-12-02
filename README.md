@@ -94,6 +94,10 @@ sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0 --skip-kernel-build
    
    # Armbian构建
    sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0
+   
+   # 跳过内核编译，使用现有设备包
+   sudo bash ./raphael-rootfs_build.sh ubuntu noble 6.17.0 ubuntu-desktop --skip-kernel-build
+   sudo bash ./raphael-rootfs_build.sh armbian noble 6.17.0 --skip-kernel-build
    ```
 
 ### GitHub Actions构建
