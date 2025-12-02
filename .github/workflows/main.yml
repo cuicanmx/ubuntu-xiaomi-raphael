@@ -11,10 +11,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version reference (e.g., 6.18)'
+        description: 'Kernel version reference (e.g., 6.17)'
         required: true
         type: string
-        default: '6.18'
+        default: '6.17'
       distribution:
         description: 'Distribution to build (ubuntu/armbian)'
         required: true
@@ -41,9 +41,9 @@ on:
           - artifacts
         default: release
       release_tag:
-        description: 'Release tag for kernel packages (e.g., v6.18)'
+        description: 'Release tag for kernel packages (e.g., v6.17)'
         required: false
-        default: 'v6.18'
+        default: 'v6.17'
         type: string
       desktop_environment:
         description: 'Desktop environment to install (only for ubuntu)'

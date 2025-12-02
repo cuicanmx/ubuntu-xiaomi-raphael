@@ -55,6 +55,7 @@ fi
 git clone https://github.com/GengWei1997/linux.git --branch raphael-$KERNEL_VERSION --depth 1 linux || {
   echo "❌ Failed to clone kernel source"
   echo "💡 Try checking if the branch 'raphael-$KERNEL_VERSION' exists"
+  echo "📋 Available branches: $(git ls-remote --heads https://github.com/GengWei1997/linux.git | grep raphael | cut -f2 | sed 's|refs/heads/||')"
   exit 1
 }
 
