@@ -16,7 +16,7 @@ WORKING_DIR=$(pwd)
 
 # Rootfs configuration
 ROOTFS_SIZE="6G"
-ROOTFS_IMG="rootfs.img"
+ROOTFS_IMG="root-${DISTRO}-${KERNEL_VERSION}.img"
 ROOTDIR="rootdir"
 
 # Default cache settings
@@ -31,10 +31,12 @@ UBUNTU_DESKTOP_ENVS=("ubuntu-desktop" "kubuntu-desktop" "xubuntu-desktop" "lubun
 # Default desktop environment for Ubuntu
 DESKTOP_ENV=""
 
-# Distribution settings (hardcoded as per requirements)
-DISTRO="ubuntu"
-VERSION="noble"
-KERNEL_VERSION="6.18"
+# Distribution settings (read from environment variables for GitHub Actions)
+DISTRO=${DISTRIBUTION:-"ubuntu"}
+VERSION="noble"  # Hardcoded as per requirements
+KERNEL_VERSION=${KERNEL_VERSION:-"6.18"}
+DESKTOP_ENV=${DESKTOP_ENVIRONMENT:-"none"}
+KERNEL_SOURCE=${KERNEL_SOURCE:-"release"}
 
 # ----------------------------- 
 # Logging Functions
@@ -426,9 +428,9 @@ finalize_build() {
     # Remove directory
     rm -rf "$ROOTDIR" 2>/dev/null || true
     
-    # Compress rootfs image
-    echo "📦 Compressing rootfs image..."
-    7z a rootfs.7z "$ROOTFS_IMG" || echo "⚠️  Compression had issues"
+    # Compress the rootfs image
+    log_info "Compressing rootfs image..."
+    7z a "${ROOTFS_IMG%.img}.7z" "$ROOTFS_IMG" || echo "⚠️  Compression had issues"
     
     echo "✅ Build finalized successfully"
     echo "💡 Boot command for legacy boot: \"root=PARTLABEL=linux\""
@@ -458,10 +460,11 @@ main() {
     
     # Step 4: Create rootfs image file
     log_info "Creating rootfs image file..."
-    truncate -s 6G rootfs.img
-    mkfs.ext4 rootfs.img
-    mkdir -p rootdir
-    mount -o loop rootfs.img rootdir
+    rm -f "$ROOTFS_IMG" 2>/dev/null || true
+    truncate -s "$ROOTFS_SIZE" "$ROOTFS_IMG"
+    mkfs.ext4 "$ROOTFS_IMG"
+    mkdir -p "$ROOTDIR"
+    mount -o loop "$ROOTFS_IMG" "$ROOTDIR"
     
     # Step 5: Download base system
     log_info "Downloading Ubuntu base system..."
@@ -469,26 +472,26 @@ main() {
     
     # Step 6: Extract base system
     log_info "Extracting base system..."
-    tar xzvf ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz -C rootdir
+    tar xzvf ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz -C "$ROOTDIR"
     
     # Step 7: Mount necessary filesystems
     log_info "Mounting necessary filesystems..."
-    mount --bind /dev rootdir/dev
-    mount --bind /dev/pts rootdir/dev/pts
-    mount --bind /proc rootdir/proc
-    mount --bind /sys rootdir/sys
+    mount --bind /dev "$ROOTDIR/dev"
+    mount --bind /dev/pts "$ROOTDIR/dev/pts"
+    mount --bind /proc "$ROOTDIR/proc"
+    mount --bind /sys "$ROOTDIR/sys"
     
     # Step 8: Configure network and system settings
     log_info "Configuring network and system settings..."
-    echo "nameserver 1.1.1.1" | tee rootdir/etc/resolv.conf
-    echo "xiaomi-raphael" | tee rootdir/etc/hostname
-    echo "127.0.0.1 localhost\n127.0.1.1 xiaomi-raphael" | tee rootdir/etc/hosts
+    echo "nameserver 1.1.1.1" | tee "$ROOTDIR/etc/resolv.conf"
+    echo "xiaomi-raphael" | tee "$ROOTDIR/etc/hostname"
+    echo -e "127.0.0.1 localhost\n127.0.1.1 xiaomi-raphael" | tee "$ROOTDIR/etc/hosts"
     
     # Step 9: Install QEMU for emulation (if not on ARM64)
     if [ "$(uname -m)" != "aarch64" ]; then
         log_info "Installing QEMU for ARM64 emulation..."
         wget "https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-aarch64-static"
-        install -m755 qemu-aarch64-static rootdir/
+        install -m755 qemu-aarch64-static "$ROOTDIR/"
         
         echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
         echo ':aarch64ld:M::\x7fELF\x02\x01\x01\x03\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
@@ -502,78 +505,85 @@ main() {
     
     # Step 11: Update package lists and upgrade
     log_info "Updating package lists and upgrading system..."
-    chroot rootdir apt update
-    chroot rootdir apt upgrade -y
+    chroot "$ROOTDIR" apt update
+    chroot "$ROOTDIR" apt upgrade -y
     
     # Step 12: Install basic packages
     log_info "Installing basic packages..."
-    chroot rootdir apt install -y bash-completion sudo ssh nano initramfs-tools
+    chroot "$ROOTDIR" apt install -y bash-completion sudo ssh nano initramfs-tools
     
     # Step 13: Install device-specific packages
     log_info "Installing device-specific packages..."
-    chroot rootdir apt install -y rmtfs protection-domain-mapper tqftpserv
+    chroot "$ROOTDIR" apt install -y rmtfs protection-domain-mapper tqftpserv
     
     # Step 14: Remove check for laptop kernel version
-    sed -i '/ConditionKernelVersion/d' rootdir/lib/systemd/system/pd-mapper.service
+    sed -i '/ConditionKernelVersion/d' "$ROOTDIR/lib/systemd/system/pd-mapper.service"
     
     # Step 15: Install custom kernel packages
     log_info "Installing custom kernel packages..."
-    cp xiaomi-raphael-debs_*/\*-xiaomi-raphael.deb rootdir/tmp/
-    chroot rootdir dpkg -i /tmp/linux-xiaomi-raphael.deb
-    chroot rootdir dpkg -i /tmp/firmware-xiaomi-raphael.deb
-    chroot rootdir dpkg -i /tmp/alsa-xiaomi-raphael.deb
-    rm rootdir/tmp/*-xiaomi-raphael.deb
+    # Copy kernel packages to chroot
+    cp linux-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp linux-xiaomi-raphael_*.deb rootdir/tmp/
+    cp firmware-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp firmware-xiaomi-raphael_*.deb rootdir/tmp/
+    cp alsa-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp alsa-xiaomi-raphael_*.deb rootdir/tmp/
+    
+    # Install kernel packages
+    chroot rootdir dpkg -i /tmp/linux-xiaomi-raphael*.deb
+    chroot rootdir dpkg -i /tmp/firmware-xiaomi-raphael*.deb
+    chroot rootdir dpkg -i /tmp/alsa-xiaomi-raphael*.deb
+    
+    # Clean up
+    rm rootdir/tmp/*-xiaomi-raphael*.deb
     
     # Step 16: Update initramfs
-    chroot rootdir update-initramfs -c -k all
+    chroot "$ROOTDIR" update-initramfs -c -k all
     
     # Step 17: Install EFI bootloader
     log_info "Installing EFI bootloader..."
-    chroot rootdir apt install -y grub-efi-arm64
+    chroot "$ROOTDIR" apt install -y grub-efi-arm64
     
     # Step 18: Configure GRUB
-    sed --in-place 's/^#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' rootdir/etc/default/grub
-    sed --in-place 's/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"/GRUB_CMDLINE_LINUX_DEFAULT=""/' rootdir/etc/default/grub
+    sed --in-place 's/^#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' "$ROOTDIR/etc/default/grub"
+    sed --in-place 's/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"/GRUB_CMDLINE_LINUX_DEFAULT=""/' "$ROOTDIR/etc/default/grub"
     
     # Step 19: Create fstab
     log_info "Creating fstab..."
-    echo "PARTLABEL=linux / ext4 errors=remount-ro,x-systemd.growfs 0 1\nPARTLABEL=esp /boot/efi vfat umask=0077 0 1" | tee rootdir/etc/fstab
+    echo -e "PARTLABEL=linux / ext4 errors=remount-ro,x-systemd.growfs 0 1\nPARTLABEL=esp /boot/efi vfat umask=0077 0 1" | tee "$ROOTDIR/etc/fstab"
     
     # Step 20: Create GDM directories
-    mkdir -p rootdir/var/lib/gdm
-    touch rootdir/var/lib/gdm/run-initial-setup
+    mkdir -p "$ROOTDIR/var/lib/gdm"
+    touch "$ROOTDIR/var/lib/gdm/run-initial-setup"
     
     # Step 21: Clean up apt cache
-    chroot rootdir apt clean
+    chroot "$ROOTDIR" apt clean
     
     # Step 22: Remove QEMU emulation if installed
     if [ "$(uname -m)" != "aarch64" ]; then
         log_info "Removing QEMU emulation..."
         echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64 2>/dev/null || true
         echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64ld 2>/dev/null || true
-        rm -f rootdir/qemu-aarch64-static
-        rm -f qemu-aarch64-static
+        rm -f "$ROOTDIR/qemu-aarch64-static" 2>/dev/null || true
+        rm -f qemu-aarch64-static 2>/dev/null || true
     fi
     
     # Step 23: Unmount filesystems
     log_info "Unmounting filesystems..."
-    umount rootdir/sys
-    umount rootdir/proc
-    umount rootdir/dev/pts
-    umount rootdir/dev
-    umount rootdir
+    umount "$ROOTDIR/sys" 2>/dev/null || true
+    umount "$ROOTDIR/proc" 2>/dev/null || true
+    umount "$ROOTDIR/dev/pts" 2>/dev/null || true
+    umount "$ROOTDIR/dev" 2>/dev/null || true
+    umount "$ROOTDIR" 2>/dev/null || true
     
     # Step 24: Clean up
-    rm -d rootdir 2>/dev/null || true
-    
-    # Step 25: Compress rootfs image
-    log_info "Compressing rootfs image..."
-    7z a rootfs.7z rootfs.img
+    log_info "Cleaning up..."
+    rm -d "$ROOTDIR" 2>/dev/null || true
+    rm -f ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz 2>/dev/null || true
+    rm -f qemu-aarch64-static 2>/dev/null || true
+    7z a "${ROOTFS_IMG%.img}.7z" "$ROOTFS_IMG" || echo "⚠️  Compression had issues"
     
     log_success "Rootfs build completed successfully!"
     log_info "Boot command line for legacy boot: root=PARTLABEL=linux"
-    log_info "Rootfs image: rootfs.img"
-    log_info "Compressed rootfs: rootfs.7z"
+    log_info "Rootfs image: $ROOTFS_IMG"
+    log_info "Compressed rootfs: ${ROOTFS_IMG%.img}.7z"
 }
 
 # Execute main function if script is run directly

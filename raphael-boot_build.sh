@@ -72,11 +72,14 @@ trap cleanup EXIT
 parse_arguments() {
     log_info "Parsing command-line arguments..."
     
-    # Set default values from centralized configuration
-    KERNEL_VERSION="${KERNEL_VERSION_DEFAULT}"
-    DISTRIBUTION="ubuntu"
-    BOOT_SOURCE="${BOOT_SOURCE_DEFAULT}"
-    USE_CACHE="${CACHE_ENABLED_DEFAULT}"
+    # Set default values from environment variables or centralized configuration
+    KERNEL_VERSION="${KERNEL_VERSION:-${KERNEL_VERSION_DEFAULT}}"
+    DISTRIBUTION="${DISTRIBUTION:-${DISTRIBUTION_DEFAULT:-ubuntu}}"
+    BOOT_SOURCE="${BOOT_SOURCE:-${BOOT_SOURCE_DEFAULT}}"
+    ROOTFS_IMAGE="${ROOTFS_IMAGE:-}"
+    ROOTFS_ZIP="${ROOTFS_ZIP:-}"
+    OUTPUT_FILE="${OUTPUT_FILE:-}"
+    USE_CACHE="${USE_CACHE:-${CACHE_ENABLED_DEFAULT}}"
     
     while [[ $# -gt 0 ]]; do
         case $1 in

@@ -96,12 +96,12 @@ setup_github_context() {
 parse_arguments() {
     log_info "Parsing command-line arguments..."
     
-    # Set default values from centralized configuration
-    KERNEL_VERSION="${KERNEL_VERSION_DEFAULT}"
-    RELEASE_TAG="${RELEASE_TAG_DEFAULT}"
-    SKIP_KERNEL=false
-    SKIP_ROOTFS=false
-    FULL_BUILD=false
+    # Set default values from environment variables or centralized configuration
+    KERNEL_VERSION="${KERNEL_VERSION:-${KERNEL_VERSION_DEFAULT}}"
+    RELEASE_TAG="${RELEASE_TAG:-${RELEASE_TAG_DEFAULT}}"
+    SKIP_KERNEL="${SKIP_KERNEL:-false}"
+    SKIP_ROOTFS="${SKIP_ROOTFS:-false}"
+    FULL_BUILD="${FULL_BUILD:-false}"
     
     while [[ $# -gt 0 ]]; do
         case $1 in

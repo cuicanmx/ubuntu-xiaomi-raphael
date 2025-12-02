@@ -63,9 +63,9 @@ trap cleanup EXIT
 parse_arguments() {
     log_info "Parsing command-line arguments..."
     
-    # Set default values from centralized configuration
-    KERNEL_VERSION="${KERNEL_VERSION_DEFAULT}"
-    CACHE_ENABLED="${CACHE_ENABLED_DEFAULT:-false}"
+    # Set default values from environment variables or centralized configuration
+    KERNEL_VERSION="${KERNEL_VERSION:-${KERNEL_VERSION_DEFAULT}}"
+    CACHE_ENABLED="${CACHE_ENABLED:-${CACHE_ENABLED_DEFAULT:-false}}"
     
     # If only one argument and it's not an option, treat it as kernel version
     if [[ $# -eq 1 && ! "$1" =~ ^- ]]; then
