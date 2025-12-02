@@ -69,7 +69,9 @@ jobs:
           fakeroot \
           cpio \
           kmod \
-          rsync
+          rsync \
+          gcc-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu
           
     - name: Cache kernel build artifacts
       uses: actions/cache@v3
