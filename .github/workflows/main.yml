@@ -14,7 +14,7 @@ on:
         description: 'Kernel version reference (e.g., 6.18)'
         required: true
         type: string
-        default: '6.18'      distribution:
+        default: '6.18'      
         description: 'Distribution to build (ubuntu/armbian)'
         required: true
         default: 'ubuntu'
