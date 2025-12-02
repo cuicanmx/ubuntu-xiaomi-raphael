@@ -22,10 +22,19 @@ on:
         type: choice
         options:
           - ubuntu
-          - debian
-      desktop_environment:
-        description: 'Desktop environment or server'
+          - armbian
+      version:
+        description: 'Distribution version'
         required: true
+        default: 'noble'
+        type: choice
+        options:
+          - noble
+          - jammy
+          - focal
+      desktop_environment:
+        description: 'Desktop environment or server (for Ubuntu only)'
+        required: false
         default: 'ubuntu-desktop'
         type: choice
         options:
@@ -88,21 +97,21 @@ jobs:
 
       - name: Check Environment
         run: |
-          echo "🔍 Checking build environment..."
-          echo "📋 Kernel version: ${{ github.event.inputs.kernel_version }}"
-          echo "💻 Runner OS: ${{ runner.os }}"
-          echo "🏗️ Architecture: ${{ env.ARCH }}"
+          echo "? Checking build environment..."
+          echo "? Kernel version: ${{ github.event.inputs.kernel_version }}"
+          echo "? Runner OS: ${{ runner.os }}"
+          echo "?? Architecture: ${{ env.ARCH }}"
           
           # Check required tools
-          echo "✅ Required tools check:" 
-          which gcc && echo "  - GCC ✓" || { echo "❌ GCC not found"; exit 1; }
-          which make && echo "  - Make ✓" || { echo "❌ Make not found"; exit 1; }
-          which git && echo "  - Git ✓" || { echo "❌ Git not found"; exit 1; }
+          echo "? Required tools check:" 
+          which gcc && echo "  - GCC ?" || { echo "? GCC not found"; exit 1; }
+          which make && echo "  - Make ?" || { echo "? Make not found"; exit 1; }
+          which git && echo "  - Git ?" || { echo "? Git not found"; exit 1; }
           # Make aarch64-linux-gnu-gcc check non-fatal to allow fallback to auto-install
-          which aarch64-linux-gnu-gcc && echo "  - aarch64-linux-gnu-gcc ✓" || echo "⚠️ aarch64-linux-gnu-gcc not found, will attempt to install during build"
+          which aarch64-linux-gnu-gcc && echo "  - aarch64-linux-gnu-gcc ?" || echo "?? aarch64-linux-gnu-gcc not found, will attempt to install during build"
           
           # Check disk space with threshold verification
-          echo "💾 Disk space check:"
+          echo "? Disk space check:"
           df -h | grep /dev/ || true
           
           # Check available disk space
@@ -110,19 +119,19 @@ jobs:
           REQUIRED_SPACE=10
           
           if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
-            echo "❌ Insufficient disk space: $AVAILABLE_SPACE GB available, $REQUIRED_SPACE GB required"
+            echo "? Insufficient disk space: $AVAILABLE_SPACE GB available, $REQUIRED_SPACE GB required"
             exit 1
           else
-            echo "✅ Sufficient disk space: $AVAILABLE_SPACE GB available"
+            echo "? Sufficient disk space: $AVAILABLE_SPACE GB available"
           fi
           
           # Check memory
-          echo "🧠 Memory status:"
+          echo "? Memory status:"
           free -h
           
       - name: Install Dependencies
         run: |
-          echo "📦 Installing build dependencies..."
+          echo "? Installing build dependencies..."
           sudo apt update
           # Install dependencies without specific version pinning to ensure compatibility
           sudo apt install -y \
@@ -165,61 +174,61 @@ jobs:
       - name: Build kernel
         run: |
           set -e  # Exit on any error
-          echo "🚀 Starting kernel build for version: ${{ github.event.inputs.kernel_version }}"
-          echo "📦 Distribution: ${{ github.event.inputs.distribution }}"
+          echo "? Starting kernel build for version: ${{ github.event.inputs.kernel_version }}"
+          echo "? Distribution: ${{ github.event.inputs.distribution }}"
           
           # Prepend ccache wrapper bin directory so cross-compilers are invoked via ccache
           export PATH="${{ github.workspace }}/.ccache/bin:$PATH"
           # Set GITHUB_WORKSPACE for script use
           export GITHUB_WORKSPACE=${{ github.workspace }}
-          ccache -z || echo "⚠️ ccache reset failed, continuing..."
+          ccache -z || echo "?? ccache reset failed, continuing..."
           
           # Build kernel with error handling
           if ! bash ./raphael-kernel_build.sh ${{ github.event.inputs.kernel_version }} ${{ github.event.inputs.distribution }}; then
-            echo "❌ Kernel build failed!"
+            echo "? Kernel build failed!"
             exit 1
           fi
-          echo "✅ Kernel build completed successfully for ${{ github.event.inputs.distribution }}"
+          echo "? Kernel build completed successfully for ${{ github.event.inputs.distribution }}"
 
       - name: Validate kernel build artifacts
         run: |
-          echo "🔍 Validating kernel build artifacts..."
+          echo "? Validating kernel build artifacts..."
           
           # Check if DEB files were created
           if [ ! -f "linux-xiaomi-raphael.deb" ]; then
-            echo "❌ Missing kernel DEB package: linux-xiaomi-raphael.deb"
+            echo "? Missing kernel DEB package: linux-xiaomi-raphael.deb"
             ls -la *.deb || echo "No DEB files found"
             exit 1
           fi
           
           # Check if firmware DEB exists
           if [ ! -f "firmware-xiaomi-raphael.deb" ]; then
-            echo "❌ Missing firmware DEB package: firmware-xiaomi-raphael.deb"
+            echo "? Missing firmware DEB package: firmware-xiaomi-raphael.deb"
             exit 1
           fi
           
           # Check if ALSA DEB exists
           if [ ! -f "alsa-xiaomi-raphael.deb" ]; then
-            echo "❌ Missing ALSA DEB package: alsa-xiaomi-raphael.deb"
+            echo "? Missing ALSA DEB package: alsa-xiaomi-raphael.deb"
             exit 1
           fi
           
-          echo "✅ All kernel artifacts validated successfully"
+          echo "? All kernel artifacts validated successfully"
 
       - name: Collect built DEB files
         run: |
-          echo "📦 Collecting built DEB files..."
+          echo "? Collecting built DEB files..."
           mkdir -p kernel-debs
-          mv *.deb kernel-debs/ || { echo "❌ Failed to move DEB files"; exit 1; }
+          mv *.deb kernel-debs/ || { echo "? Failed to move DEB files"; exit 1; }
           
-          echo "📋 Collected DEB packages:"
+          echo "? Collected DEB packages:"
           ls -la kernel-debs/
           
           # Verify all packages are present
           expected_packages=("linux-xiaomi-raphael.deb" "firmware-xiaomi-raphael.deb" "alsa-xiaomi-raphael.deb")
           for pkg in "${expected_packages[@]}"; do
             if [ ! -f "kernel-debs/$pkg" ]; then
-              echo "❌ Missing expected package: $pkg"
+              echo "? Missing expected package: $pkg"
               exit 1
             fi
           done
@@ -227,7 +236,7 @@ jobs:
       - name: Show ccache stats
         if: always()
         run: |
-          echo "==== 📊 ccache stats (before save) ===="
+          echo "==== ? ccache stats (before save) ===="
           ccache -s || true
 
       - name: Save ccache
@@ -265,11 +274,11 @@ jobs:
 
       - name: Validate downloaded artifacts
         run: |
-          echo "🔍 Validating downloaded kernel artifacts..."
+          echo "? Validating downloaded kernel artifacts..."
           
           # Check if artifacts directory exists
           if [ ! -d "./xiaomi-raphael-debs_${{ github.event.inputs.kernel_version }}" ]; then
-            echo "❌ Artifacts directory not found"
+            echo "? Artifacts directory not found"
             exit 1
           fi
           
@@ -277,18 +286,18 @@ jobs:
           expected_packages=("linux-xiaomi-raphael.deb" "firmware-xiaomi-raphael.deb" "alsa-xiaomi-raphael.deb")
           for pkg in "${expected_packages[@]}"; do
             if [ ! -f "./xiaomi-raphael-debs_${{ github.event.inputs.kernel_version }}/$pkg" ]; then
-              echo "❌ Missing required package: $pkg"
+              echo "? Missing required package: $pkg"
               ls -la "./xiaomi-raphael-debs_${{ github.event.inputs.kernel_version }}/" || echo "No files in artifacts directory"
               exit 1
             fi
           done
           
-          echo "✅ All kernel artifacts downloaded and validated successfully"
+          echo "? All kernel artifacts downloaded and validated successfully"
 
       - name: List downloaded DEB files
         run: |
-          echo "📦 Downloaded DEB packages:"
-          ls -la "./xiaomi-raphael-debs_${{ github.event.inputs.kernel_version }}/" || { echo "❌ Failed to list artifacts"; exit 1; }
+          echo "? Downloaded DEB packages:"
+          ls -la "./xiaomi-raphael-debs_${{ github.event.inputs.kernel_version }}/" || { echo "? Failed to list artifacts"; exit 1; }
 
       - name: Cache rootfs dependencies and build artifacts
         uses: actions/cache@v3
@@ -307,7 +316,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          echo "📦 Installing rootfs build dependencies..."
+          echo "? Installing rootfs build dependencies..."
           sudo apt update
           # Install dependencies without specific version pinning to ensure compatibility
           sudo apt install -y \
@@ -329,28 +338,38 @@ jobs:
             wget \
             dpkg \
             libssl-dev
-          echo "✅ Rootfs dependencies installed successfully"
+          echo "? Rootfs dependencies installed successfully"
 
       - name: Install debootstrap for Debian support
         if: github.event.inputs.distribution == 'debian'
         run: |
-          echo "📦 Installing debootstrap for Debian build..."
+          echo "? Installing debootstrap for Debian build..."
           sudo apt update
           sudo apt install -y debootstrap
           
       - name: Build rootfs
         run: |
-          echo "🚀 Starting rootfs build..."
-          echo "📦 Distribution: ${{ github.event.inputs.distribution }}"
-          echo "🖥️ Desktop: ${{ github.event.inputs.desktop_environment }}"
-          echo "📋 Kernel: ${{ github.event.inputs.kernel_version }}"
+          echo "? Starting rootfs build..."
+          echo "? Distribution: ${{ github.event.inputs.distribution }}"
+          echo "? Version: ${{ github.event.inputs.version }}"
+          echo "?? Desktop: ${{ github.event.inputs.desktop_environment }}"
+          echo "? Kernel: ${{ github.event.inputs.kernel_version }}"
           
           # Build rootfs with enhanced script
-          if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.desktop_environment }} ${{ github.event.inputs.kernel_version }}; then
-            echo "❌ RootFS build failed!"
-            exit 1
+          # For Armbian, desktop_environment is not used
+          if [ "${{ github.event.inputs.distribution }}" = "armbian" ]; then
+            if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }}; then
+              echo "? Armbian RootFS build failed!"
+              exit 1
+            fi
+          else
+            # For Ubuntu, pass desktop_environment as the first parameter after distribution
+            if ! sudo bash ./raphael-rootfs_build.sh ${{ github.event.inputs.distribution }} ${{ github.event.inputs.version }} ${{ github.event.inputs.kernel_version }} ${{ github.event.inputs.desktop_environment }}; then
+              echo "? Ubuntu RootFS build failed!"
+              exit 1
+            fi
           fi
-          echo "✅ RootFS build completed successfully"
+          echo "? RootFS build completed successfully"
 
       - name: Upload rootfs as artifact
         uses: actions/upload-artifact@v4
@@ -379,9 +398,9 @@ jobs:
           
       - name: Display structure of downloaded files
         run: |
-          echo "📋 Kernel DEBs:"
+          echo "? Kernel DEBs:"
           find kernel-debs/ -type f -name "*.deb" || echo "No DEB files found"
-          echo "📋 RootFS:"
+          echo "? RootFS:"
           find rootfs/ -type f -name "*.7z" || echo "No 7z files found"
         
       - name: Create Release
