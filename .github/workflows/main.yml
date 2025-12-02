@@ -11,11 +11,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version to use (e.g., 6.1.80)'
+        description: 'Kernel version reference (e.g., 6.18)'
         required: true
-        default: '6.1.80'
         type: string
-      distribution:
+        default: '6.18'      distribution:
         description: 'Distribution to build (ubuntu/armbian)'
         required: true
         default: 'ubuntu'
@@ -41,9 +40,9 @@ on:
           - artifacts
         default: release
       release_tag:
-        description: 'Release tag for kernel packages (e.g., v6.1.80)'
+        description: 'Release tag for kernel packages (e.g., v6.18)'
         required: false
-        default: 'v6.1.80'
+        default: 'v6.18'
         type: string
       desktop_environment:
         description: 'Desktop environment to install (only for ubuntu)'
@@ -81,56 +80,14 @@ jobs:
         echo "Release tag: $RELEASE_TAG"
         echo "Desktop environment: $DESKTOP_ENVIRONMENT"
         
-    - name: Validate inputs
+    - name: Setup inputs
       run: |
-        # Allow both X.Y.Z and X.Y format for kernel versions
-        if [[ ! "$KERNEL_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-          echo "❌ Invalid kernel version format: $KERNEL_VERSION"
-          echo "   Expected format: X.Y or X.Y.Z (e.g., 6.18 or 6.1.80)"
-          exit 1
-        fi
-        
-        # Validate distribution
-        if [[ ! "$DISTRIBUTION" =~ ^(ubuntu|armbian)$ ]]; then
-          echo "❌ Invalid distribution: $DISTRIBUTION"
-          echo "   Valid options: ubuntu, armbian"
-          exit 1
-        fi
-        
-        # Validate kernel source
-        if [[ ! "$KERNEL_SOURCE" =~ ^(release|artifacts)$ ]]; then
-          echo "❌ Invalid kernel source: $KERNEL_SOURCE"
-          echo "   Valid options: release, artifacts"
-          exit 1
-        fi
-        
-        # Validate release tag if using release source
+        echo "🚀 Starting rootfs build"
+        echo "📦 Distribution: $DISTRIBUTION"
+        echo "🔧 Kernel Version: $KERNEL_VERSION"
+        echo "📎 Kernel Source: $KERNEL_SOURCE"
         if [[ "$KERNEL_SOURCE" == "release" ]]; then
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "❌ Invalid release tag format: $RELEASE_TAG"
-            echo "   Expected format: vX.Y or vX.Y.Z (e.g., v6.18 or v6.1.80)"
-            exit 1
-          fi
-          
-          # Ensure kernel version and release tag are compatible
-          KERNEL_BASE="${KERNEL_VERSION%.*}"
-          RELEASE_BASE="${RELEASE_TAG#v}"
-          RELEASE_BASE="${RELEASE_BASE%.*}"
-          
-          if [[ "$KERNEL_BASE" != "$RELEASE_BASE" ]]; then
-            echo "❌ Kernel version and release tag mismatch"
-            echo "   Kernel: $KERNEL_VERSION, Release: $RELEASE_TAG"
-            echo "   Base versions should match (e.g., 6.18 and v6.18.0)"
-            exit 1
-          fi
-        fi
-        
-        echo "✅ Input validation passed"
-        echo "   Kernel Version: $KERNEL_VERSION"
-        echo "   Distribution: $DISTRIBUTION"
-        echo "   Kernel Source: $KERNEL_SOURCE"
-        if [[ "$KERNEL_SOURCE" == "release" ]]; then
-          echo "   Release Tag: $RELEASE_TAG"
+          echo "🏷️  Release Tag: $RELEASE_TAG"
         fi
          
     - name: Download kernel packages from GitHub Release

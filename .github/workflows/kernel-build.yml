@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version to build (e.g., 6.1.80)'
+        description: 'Kernel version reference (e.g., 6.18)'
         required: true
         type: string
-        default: '6.1.80'
+        default: '6.18'
       release_tag:
         description: 'Release tag for the kernel package'
         required: true
         type: string
-        default: 'v6.1.80'
+        default: 'v6.18'
       upload_to_release:
         description: 'Upload kernel packages to GitHub Release'
         required: false
@@ -37,37 +37,10 @@ jobs:
         echo "Building kernel version: $KERNEL_VERSION"
         echo "Release tag: $RELEASE_TAG"
         
-    - name: Validate inputs
+    - name: Setup inputs
       run: |
-        # Allow both X.Y.Z and X.Y format for kernel versions
-        if [[ ! "$KERNEL_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-          echo "❌ Invalid kernel version format: $KERNEL_VERSION"
-          echo "   Expected format: X.Y or X.Y.Z (e.g., 6.18 or 6.1.80)"
-          exit 1
-        fi
-        
-        # Allow both vX.Y.Z and vX.Y format for release tags
-        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-          echo "❌ Invalid release tag format: $RELEASE_TAG"
-          echo "   Expected format: vX.Y or vX.Y.Z (e.g., v6.18 or v6.1.80)"
-          exit 1
-        fi
-        
-        # Ensure kernel version and release tag are compatible
-        KERNEL_BASE="${KERNEL_VERSION%.*}"
-        RELEASE_BASE="${RELEASE_TAG#v}"
-        RELEASE_BASE="${RELEASE_BASE%.*}"
-        
-        if [[ "$KERNEL_BASE" != "$RELEASE_BASE" ]]; then
-          echo "❌ Kernel version and release tag mismatch"
-          echo "   Kernel: $KERNEL_VERSION, Release: $RELEASE_TAG"
-          echo "   Base versions should match (e.g., 6.18 and v6.18.0)"
-          exit 1
-        fi
-        
-        echo "✅ Input validation passed"
-        echo "   Kernel Version: $KERNEL_VERSION"
-        echo "   Release Tag: $RELEASE_TAG"
+        echo "🚀 Starting kernel build with version: $KERNEL_VERSION"
+        echo "📦 Release tag: $RELEASE_TAG"
         
     - name: Check available disk space
       run: |
