@@ -36,6 +36,17 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
             
+      - name: Cache kernel source
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache
+            output/
+          key: ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-${{ hashFiles('build-config.sh', 'raphael-kernel_build.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}
+            ${{ runner.os }}-kernel-
+            
       - name: Build kernel packages
         run: |
           chmod +x ./raphael-kernel_build.sh
@@ -44,7 +55,47 @@ jobs:
       - name: Verify kernel packages
         run: |
           echo "🔍 Verifying generated kernel packages:"
-          ls -la *.deb || echo "No DEB packages found"
+          
+          # Check if output directory exists
+          if [ ! -d "output/kernel" ]; then
+            echo "❌ Output directory not found"
+            exit 1
+          fi
+          
+          # List all generated files
+          echo "📁 Generated files:"
+          ls -la output/kernel/
+          
+          # Verify DEB packages
+          if ls output/kernel/*.deb 1> /dev/null 2>&1; then
+            echo "✅ Found DEB packages:"
+            ls -la output/kernel/*.deb
+            
+            # Check package integrity
+            for pkg in output/kernel/*.deb; do
+              echo "🔍 Verifying package: $pkg"
+              dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
+            done
+          else
+            echo "❌ No DEB packages found"
+            exit 1
+          fi
+          
+          # Verify kernel image
+          if [ -f "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}" ]; then
+            echo "✅ Found kernel image: Image.gz-${{ github.event.inputs.kernel_version }}"
+            file "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}"
+          else
+            echo "⚠️ Kernel image not found"
+          fi
+          
+          # Verify DTB files
+          if ls output/kernel/dtbs/sm8150-*.dtb 1> /dev/null 2>&1; then
+            echo "✅ Found DTB files:"
+            ls -la output/kernel/dtbs/sm8150-*.dtb
+          else
+            echo "⚠️ DTB files not found"
+          fi
           
       - name: Upload kernel packages to release
         if: github.event.inputs.upload_to_release == 'true'
@@ -52,11 +103,38 @@ jobs:
         with:
           tag_name: v${{ github.event.inputs.kernel_version }}
           name: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
-          body: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+          body: |
+            # Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael
+            
+            ## Build Information
+            - Kernel Version: ${{ github.event.inputs.kernel_version }}
+            - Architecture: ARM64
+            - Target Device: Xiaomi Raphael (K20 Pro)
+            - Build Date: ${{ github.event.repository.created_at }}
+            - Build ID: ${{ github.run_id }}
+            
+            ## Generated Files
+            - **Kernel Packages**: DEB packages for installation
+            - **Kernel Image**: Raw kernel binary (Image.gz)
+            - **DTB Files**: Device Tree Blobs for hardware configuration
+            
+            ## Usage
+            
+            ### Installing Kernel Packages:
+            ```bash
+            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}-1_arm64.deb
+            ```
+            
+            ### For Boot Image Creation:
+            Use the `Image.gz` file and corresponding DTB files with your boot image builder.
+            
+            ## Changelog
+            - Kernel version update to ${{ github.event.inputs.kernel_version }}
+            - Bug fixes and performance improvements
           files: |
-            linux-xiaomi-raphael_*.deb
-            firmware-xiaomi-raphael_*.deb
-            alsa-xiaomi-raphael_*.deb
+            output/kernel/*.deb
+            output/kernel/Image.gz-*
+            output/kernel/dtbs/*
           draft: false
           prerelease: false
           
@@ -66,7 +144,7 @@ jobs:
         with:
           name: kernel-packages-${{ github.event.inputs.kernel_version }}
           path: |
-            linux-xiaomi-raphael_*.deb
-            firmware-xiaomi-raphael_*.deb
-            alsa-xiaomi-raphael_*.deb
+            output/kernel/*.deb
+            output/kernel/Image.gz-*
+            output/kernel/dtbs/*
           retention-days: 30

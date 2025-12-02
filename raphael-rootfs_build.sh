@@ -15,6 +15,7 @@ DISTRO=""
 VERSION=""
 KERNEL_VERSION=""
 DESKTOP_ENV=""
+USE_CACHE="${CACHE_ENABLED_DEFAULT}"
 
 # Error handling function
 handle_error() {
@@ -53,17 +54,21 @@ cleanup() {
     if [ -f "qemu-aarch64-static" ]; then
         rm -f "qemu-aarch64-static" 2>/dev/null || true
     fi
+    
+    # Cache directory is not cleaned up here to preserve cached files
 }
 
 # Parse command line arguments
 parse_arguments() {
     if [ $# -lt 3 ]; then
-        echo "Usage: $0 <distribution> <version> <kernel_version> [desktop_environment] [--skip-kernel-build]"
+        echo "Usage: $0 <distribution> <version> <kernel_version> [desktop_environment] [--skip-kernel-build] [--cache|--no-cache]"
         echo "  distribution: ubuntu|armbian"
         echo "  version: for ubuntu: version name, for armbian: noble"
         echo "  kernel_version: e.g., 6.17"
         echo "  desktop_environment: (optional) for ubuntu only"
         echo "  --skip-kernel-build: (optional) use existing device packages instead of building kernel"
+        echo "  --cache: (optional) use cache for base system download"
+        echo "  --no-cache: (optional) disable cache"
         exit 1
     fi
 
@@ -76,6 +81,12 @@ parse_arguments() {
         case "$arg" in
             "--skip-kernel-build")
                 SKIP_KERNEL_BUILD=true
+                ;;
+            "--cache")
+                USE_CACHE=true
+                ;;
+            "--no-cache")
+                USE_CACHE=false
                 ;;
             *)
                 if [ "$DISTRO" = "ubuntu" ] && [ -z "$DESKTOP_ENV" ]; then
@@ -95,6 +106,8 @@ parse_arguments() {
         echo "✅ Desktop environment: $DESKTOP_ENV"
     fi
     echo "✅ Skip kernel build: $SKIP_KERNEL_BUILD"
+    echo "✅ Use cache: $USE_CACHE"
+    echo "✅ Use cache: $USE_CACHE"
 }
 
 # Validate distribution and version
@@ -152,21 +165,29 @@ download_base_system() {
         handle_error "Failed to get download URL for $DISTRO $VERSION"
     fi
     
-    # Download base system
-    wget -q --show-progress "$BASE_URL" || handle_error "Failed to download $DISTRO base"
+    # Create cache directory
+    CACHE_BASE_DIR="${CACHE_DIR}/rootfs"
+    mkdir -p "$CACHE_BASE_DIR"
+    
+    # Download base system with cache support
+    local filename=$(basename "$BASE_URL")
+    local cache_file="${CACHE_BASE_DIR}/${filename}"
+    
+    if [ "$USE_CACHE" = "true" ] && [ -f "$cache_file" ]; then
+        echo "✅ Using cached base system: $cache_file"
+    else
+        echo "📥 Downloading base system to cache..."
+        wget -q --show-progress "$BASE_URL" -O "$cache_file" || handle_error "Failed to download $DISTRO base"
+    fi
     
     # Extract based on file type
-    local filename=$(basename "$BASE_URL")
     if [[ "$filename" == *.tar.gz ]]; then
-        tar xzvf "$filename" -C "$ROOTDIR" || handle_error "Failed to extract $DISTRO base"
+        tar xzvf "$cache_file" -C "$ROOTDIR" || handle_error "Failed to extract $DISTRO base"
     elif [[ "$filename" == *.tar.xz ]]; then
-        tar xJvf "$filename" -C "$ROOTDIR" || handle_error "Failed to extract $DISTRO base"
+        tar xJvf "$cache_file" -C "$ROOTDIR" || handle_error "Failed to extract $DISTRO base"
     else
         handle_error "Unsupported archive format: $filename"
     fi
-    
-    # Cleanup downloaded file
-    rm -f "$filename"
     
     echo "✅ Base system downloaded and extracted"
 }
@@ -377,26 +398,146 @@ finalize_build() {
     echo "💡 Boot command for legacy boot: \"root=PARTLABEL=linux\""
 }
 
-# Main execution flow
+# ----------------------------- 
+# Main function
+# ----------------------------- 
 main() {
-    echo "🚀 Starting RootFS build for $DISTRO $VERSION"
-    echo "🔧 Kernel version: $KERNEL_VERSION"
+    log_info "Starting rootfs build for Xiaomi K20 Pro (Raphael)"
     
-    # Set up error handling and cleanup
-    trap cleanup EXIT
-    
-    # Execute build steps
+    # Step 1: Parse command-line arguments
     parse_arguments "$@"
-    validate_configuration
-    create_rootfs_image
-    download_base_system
-    setup_chroot_environment
-    setup_distribution
-    install_device_packages
-    setup_boot_configuration
-    finalize_build
     
-    echo "🎉 RootFS build completed successfully!"
+    # Step 2: Validate parameters
+    validate_parameters
+    
+    # Step 3: Check root permissions
+    if [ "$(id -u)" -ne 0 ]; then
+        log_error "Rootfs can only be built as root"
+        exit 1
+    fi
+    
+    # Set Ubuntu version information
+    VERSION="noble"
+    UBUNTU_VERSION="24.04.3"
+    
+    # Step 4: Create rootfs image file
+    log_info "Creating rootfs image file..."
+    truncate -s 6G rootfs.img
+    mkfs.ext4 rootfs.img
+    mkdir -p rootdir
+    mount -o loop rootfs.img rootdir
+    
+    # Step 5: Download base system
+    log_info "Downloading Ubuntu base system..."
+    wget "https://cdimage.ubuntu.com/ubuntu-base/releases/$VERSION/release/ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz"
+    
+    # Step 6: Extract base system
+    log_info "Extracting base system..."
+    tar xzvf ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz -C rootdir
+    
+    # Step 7: Mount necessary filesystems
+    log_info "Mounting necessary filesystems..."
+    mount --bind /dev rootdir/dev
+    mount --bind /dev/pts rootdir/dev/pts
+    mount --bind /proc rootdir/proc
+    mount --bind /sys rootdir/sys
+    
+    # Step 8: Configure network and system settings
+    log_info "Configuring network and system settings..."
+    echo "nameserver 1.1.1.1" | tee rootdir/etc/resolv.conf
+    echo "xiaomi-raphael" | tee rootdir/etc/hostname
+    echo "127.0.0.1 localhost\n127.0.1.1 xiaomi-raphael" | tee rootdir/etc/hosts
+    
+    # Step 9: Install QEMU for emulation (if not on ARM64)
+    if [ "$(uname -m)" != "aarch64" ]; then
+        log_info "Installing QEMU for ARM64 emulation..."
+        wget "https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-aarch64-static"
+        install -m755 qemu-aarch64-static rootdir/
+        
+        echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
+        echo ':aarch64ld:M::\x7fELF\x02\x01\x01\x03\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
+    else
+        log_info "Running on ARM64, skipping QEMU installation"
+    fi
+    
+    # Step 10: Configure environment variables for chroot
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+    export DEBIAN_FRONTEND=noninteractive
+    
+    # Step 11: Update package lists and upgrade
+    log_info "Updating package lists and upgrading system..."
+    chroot rootdir apt update
+    chroot rootdir apt upgrade -y
+    
+    # Step 12: Install basic packages
+    log_info "Installing basic packages..."
+    chroot rootdir apt install -y bash-completion sudo ssh nano initramfs-tools
+    
+    # Step 13: Install device-specific packages
+    log_info "Installing device-specific packages..."
+    chroot rootdir apt install -y rmtfs protection-domain-mapper tqftpserv
+    
+    # Step 14: Remove check for laptop kernel version
+    sed -i '/ConditionKernelVersion/d' rootdir/lib/systemd/system/pd-mapper.service
+    
+    # Step 15: Install custom kernel packages
+    log_info "Installing custom kernel packages..."
+    cp xiaomi-raphael-debs_*/\*-xiaomi-raphael.deb rootdir/tmp/
+    chroot rootdir dpkg -i /tmp/linux-xiaomi-raphael.deb
+    chroot rootdir dpkg -i /tmp/firmware-xiaomi-raphael.deb
+    chroot rootdir dpkg -i /tmp/alsa-xiaomi-raphael.deb
+    rm rootdir/tmp/*-xiaomi-raphael.deb
+    
+    # Step 16: Update initramfs
+    chroot rootdir update-initramfs -c -k all
+    
+    # Step 17: Install EFI bootloader
+    log_info "Installing EFI bootloader..."
+    chroot rootdir apt install -y grub-efi-arm64
+    
+    # Step 18: Configure GRUB
+    sed --in-place 's/^#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' rootdir/etc/default/grub
+    sed --in-place 's/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"/GRUB_CMDLINE_LINUX_DEFAULT=""/' rootdir/etc/default/grub
+    
+    # Step 19: Create fstab
+    log_info "Creating fstab..."
+    echo "PARTLABEL=linux / ext4 errors=remount-ro,x-systemd.growfs 0 1\nPARTLABEL=esp /boot/efi vfat umask=0077 0 1" | tee rootdir/etc/fstab
+    
+    # Step 20: Create GDM directories
+    mkdir -p rootdir/var/lib/gdm
+    touch rootdir/var/lib/gdm/run-initial-setup
+    
+    # Step 21: Clean up apt cache
+    chroot rootdir apt clean
+    
+    # Step 22: Remove QEMU emulation if installed
+    if [ "$(uname -m)" != "aarch64" ]; then
+        log_info "Removing QEMU emulation..."
+        echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64 2>/dev/null || true
+        echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64ld 2>/dev/null || true
+        rm -f rootdir/qemu-aarch64-static
+        rm -f qemu-aarch64-static
+    fi
+    
+    # Step 23: Unmount filesystems
+    log_info "Unmounting filesystems..."
+    umount rootdir/sys
+    umount rootdir/proc
+    umount rootdir/dev/pts
+    umount rootdir/dev
+    umount rootdir
+    
+    # Step 24: Clean up
+    rm -d rootdir 2>/dev/null || true
+    
+    # Step 25: Compress rootfs image
+    log_info "Compressing rootfs image..."
+    7z a rootfs.7z rootfs.img
+    
+    log_success "Rootfs build completed successfully!"
+    log_info "Boot command line for legacy boot: root=PARTLABEL=linux"
+    log_info "Rootfs image: rootfs.img"
+    log_info "Compressed rootfs: rootfs.7z"
 }
 
 # Execute main function if script is run directly

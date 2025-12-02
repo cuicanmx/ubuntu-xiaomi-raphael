@@ -33,6 +33,19 @@ jobs:
         echo "🔧 Creating boot image for $DISTRO with kernel $KERNEL_VERSION"
         echo "🏷️ Release tag: $RELEASE_TAG"
         
+    - name: Cache build components
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache
+          ./boot-image-build
+          ./rootfs-*.*
+        key: ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.distribution }}-${{ hashFiles('build-config.sh', 'raphael-boot_build.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.distribution }}-
+          ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-
+          ${{ runner.os }}-boot-image-
+    
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -48,7 +61,8 @@ jobs:
           fakeroot \
           cpio \
           kmod \
-          rsync
+          rsync \
+          jq
           
     - name: Download and extract rootfs image
       env:
@@ -106,7 +120,80 @@ jobs:
           --rootfs-image "$ROOTFS_IMG" \
           --output "xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         
+        # Extract ROOTFS_UUID from script output
+        if grep -q "ROOTFS_UUID" output/boot/boot-image-info.txt; then
+          ROOTFS_UUID=$(grep "ROOTFS_UUID" output/boot/boot-image-info.txt | cut -d'=' -f2)
+          echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
+        fi
+        
         echo "✅ Boot image built successfully"
+        
+    - name: Verify boot image
+      run: |
+        echo "🔍 Verifying boot image..."
+        
+        # Check if boot image exists
+        BOOT_IMG=$(ls xiaomi-k20pro-boot-*.img 2>/dev/null | head -1)
+        if [ -z "$BOOT_IMG" ]; then
+          echo "❌ Boot image not found"
+          exit 1
+        fi
+        
+        echo "✅ Boot image: $BOOT_IMG"
+        echo "📊 Boot image details:"
+        ls -lh "$BOOT_IMG"
+        file "$BOOT_IMG"
+        
+        # Verify image size (should be around 256MB for boot partition)
+        IMG_SIZE=$(stat -c%s "$BOOT_IMG")
+        MIN_SIZE=$((200 * 1024 * 1024))  # 200MB
+        MAX_SIZE=$((500 * 1024 * 1024))  # 500MB
+        if [ "$IMG_SIZE" -ge "$MIN_SIZE" ] && [ "$IMG_SIZE" -le "$MAX_SIZE" ]; then
+          echo "✅ Boot image size is within expected range"
+        else
+          echo "⚠️ Boot image size ($IMG_SIZE bytes) is outside expected range ($MIN_SIZE - $MAX_SIZE bytes)"
+        fi
+        
+        # Try to mount and check content
+        echo "🔍 Checking boot image content..."
+        mkdir -p /tmp/boot-mount
+        sudo mount -o loop "$BOOT_IMG" /tmp/boot-mount
+        
+        # Check essential boot files
+        essential_files=("/tmp/boot-mount/EFI/boot/bootaa64.efi" "/tmp/boot-mount/loader/entries/ubuntu.conf" "/tmp/boot-mount/linux.efi" "/tmp/boot-mount/initramfs")
+        
+        for file in "${essential_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ Found: $file"
+          else
+            echo "❌ Missing: $file"
+          fi
+        done
+        
+        # Check loader configuration
+        if [ -f "/tmp/boot-mount/loader/loader.conf" ]; then
+          echo "📄 Loader configuration:"
+          cat /tmp/boot-mount/loader/loader.conf
+        fi
+        
+        # Check Ubuntu entry
+        if [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ]; then
+          echo "📄 Ubuntu boot entry:"
+          cat /tmp/boot-mount/loader/entries/ubuntu.conf
+          
+          # Verify kernel version in entry
+          if grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf; then
+            echo "✅ Kernel version in boot entry matches: $KERNEL_VERSION"
+          else
+            echo "⚠️ Kernel version in boot entry does not match"
+          fi
+        fi
+        
+        # Unmount
+        sudo umount /tmp/boot-mount
+        rmdir /tmp/boot-mount
+        
+        echo "✅ Boot image verification completed"
         
     - name: Upload boot image to release
       uses: softprops/action-gh-release@v1
@@ -120,6 +207,8 @@ jobs:
           - **Distribution**: ${{ github.event.inputs.distribution }}
           - **Kernel Version**: ${{ github.event.inputs.kernel_version }}
           - **RootFS UUID**: ${{ env.ROOTFS_UUID }}
+          - **Build Date**: ${{ github.event.repository.created_at }}
+          - **Build ID**: ${{ github.run_id }}
           
           ## Usage
           Flash this boot image to the boot partition of your Xiaomi K20 Pro device.
@@ -129,6 +218,15 @@ jobs:
           - Linux kernel (linux.efi)
           - Initramfs (initramfs)
           - Root filesystem UUID: ${{ env.ROOTFS_UUID }}
+          
+          ## Installation Instructions
+          ```bash
+          # Flash the boot image
+          fastboot flash boot xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          
+          # Reboot
+          fastboot reboot
+          ```
           
         files: xiaomi-k20pro-boot-*.img
         draft: false
@@ -148,3 +246,5 @@ jobs:
         echo "🔧 Kernel Version: $KERNEL_VERSION"
         echo "🔑 RootFS UUID: ${{ env.ROOTFS_UUID }}"
         echo "📤 Boot image uploaded to GitHub Release: $RELEASE_TAG"
+        echo "📊 Final boot image:"
+        ls -lh xiaomi-k20pro-boot-*.img

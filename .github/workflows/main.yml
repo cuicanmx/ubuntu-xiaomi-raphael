@@ -148,9 +148,12 @@ jobs:
       with:
         path: |
           ~/.cache
+          ~/.cache/debootstrap
+          ~/.cache/apt-cacher-ng
           rootfs-build/
           /var/cache/apt
           /var/lib/apt
+          ${{ github.workspace }}/kernel-packages
         key: ${{ runner.os }}-rootfs-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('raphael-rootfs_build.sh', 'build-config.sh') }}
         restore-keys: |
           ${{ runner.os }}-rootfs-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}
@@ -175,7 +178,9 @@ jobs:
            dosfstools \
            e2fsprogs \
            util-linux \
-           systemd-container
+           systemd-container \
+           jq \
+           kpartx
 
     - name: Build rootfs
       run: |
@@ -224,6 +229,51 @@ jobs:
          # Check file type
          file "$ROOTFS_IMAGE" || echo "⚠️ File command not available"
          
+         # Enhanced validation: Check partition table
+         echo "🔍 Checking partition table:"
+         sudo fdisk -l "$ROOTFS_IMAGE" || echo "⚠️ Partition table check failed"
+         
+         # Try to mount and verify content
+         echo "🔍 Verifying RootFS content..."
+         sudo kpartx -a "$ROOTFS_IMAGE"
+         sleep 2
+         
+         # Check if root partition exists
+         if [ -b /dev/mapper/loop0p2 ]; then
+           echo "✅ Root partition found"
+           
+           # Mount root partition
+           sudo mkdir -p /mnt/rootfs
+           sudo mount /dev/mapper/loop0p2 /mnt/rootfs
+           
+           # Check key files
+           key_files=("/mnt/rootfs/etc/hostname" "/mnt/rootfs/etc/fstab" "/mnt/rootfs/boot/vmlinuz*" "/mnt/rootfs/lib/modules")
+           for file in "${key_files[@]}"; do
+             if [ -e "$file" ]; then
+               echo "✅ Found: $file"
+             else
+               echo "❌ Missing: $file"
+             fi
+           done
+           
+           # Check kernel modules
+           if ls /mnt/rootfs/lib/modules/${{ env.KERNEL_VERSION }}* 1> /dev/null 2>&1; then
+             echo "✅ Kernel modules installed:"
+             ls -la /mnt/rootfs/lib/modules/${{ env.KERNEL_VERSION }}*
+           else
+             echo "❌ Kernel modules not found"
+           fi
+           
+           # Unmount and cleanup
+           sudo umount /mnt/rootfs
+           sudo rmdir /mnt/rootfs
+         else
+           echo "⚠️ Could not find root partition"
+         fi
+         
+         # Cleanup loop devices
+         sudo kpartx -d "$ROOTFS_IMAGE"
+         
          echo "✅ RootFS artifacts validated successfully"
 
     - name: Compress rootfs image to zip
@@ -264,27 +314,45 @@ jobs:
          path: ./rootfs-images
          
      - name: Create release
-       uses: softprops/action-gh-release@v1
-       with:
-         tag_name: ${{ github.event.inputs.release_tag }}
-         name: "Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}"
-         body: |
-           # Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}
-           
-           ## RootFS Images
-           - **Full Image**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-           - **Compressed**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (recommended for boot image builds)
-           
-           ## Build Information
-           - Distribution: ${{ github.event.inputs.distribution }}
-           - Kernel Version: ${{ github.event.inputs.kernel_version }}
-           - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
-           - Architecture: ARM64
-           - Target Device: Xiaomi Raphael (K20 Pro)
-           
-           ## Usage Notes
-           - For boot image creation, download the .zip file for faster transfer
-           - Extract the .img file from the .zip before use
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.release_tag }}
+        name: "Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}"
+        body: |
+          # Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}
+          
+          ## RootFS Images
+          - **Full Image**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          - **Compressed**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (recommended for boot image builds)
+          
+          ## Build Information
+          - Distribution: ${{ github.event.inputs.distribution }}
+          - Kernel Version: ${{ github.event.inputs.kernel_version }}
+          - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
+          - Architecture: ARM64
+          - Target Device: Xiaomi Raphael (K20 Pro)
+          - Build Date: ${{ github.event.repository.created_at }}
+          - Build ID: ${{ github.run_id }}
+          
+          ## Usage
+          
+          ### Flashing Instructions:
+          ```bash
+          # Unzip the RootFS
+          unzip root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
+          
+          # Flash to your device (adjust for your setup)
+          fastboot flash system root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          ```
+          
+          ## Usage Notes
+          - For boot image creation, download the .zip file for faster transfer
+          - Extract the .img file from the .zip before use
+          
+          ## Changelog
+          - Kernel version: ${{ github.event.inputs.kernel_version }}
+          - Distribution: ${{ github.event.inputs.distribution }}
+          - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
            
          files: |
            rootfs-images/*.img

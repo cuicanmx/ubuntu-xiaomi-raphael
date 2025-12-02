@@ -1,15 +1,29 @@
 #!/bin/bash
 
-set -e
+# Boot image creation script for Xiaomi K20 Pro (Raphael)
+# Standardized implementation with centralized configuration
 
-# 颜色输出
+set -e  # Exit on any error
+
+# ----------------------------- 
+# Load centralized configuration
+# ----------------------------- 
+if [ -f "build-config.sh" ]; then
+    source "build-config.sh"
+else
+    echo "❌ Error: build-config.sh not found!"
+    exit 1
+fi
+
+# ----------------------------- 
+# Color output functions
+# ----------------------------- 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 日志函数
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -26,11 +40,13 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 清理函数
+# ----------------------------- 
+# Cleanup function
+# ----------------------------- 
 cleanup() {
     log_info "Cleaning up..."
     
-    # 卸载挂载点
+    # Unmount mount points if they exist
     if mountpoint -q "$MOUNT_DIR"; then
         sudo umount "$MOUNT_DIR" 2>/dev/null || true
     fi
@@ -39,17 +55,29 @@ cleanup() {
         sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || true
     fi
     
-    # 删除临时目录
+    # Remove temporary directories
     rm -rf "$MOUNT_DIR" "$ROOTFS_MOUNT_DIR" "$TEMP_DIR"
     
     log_success "Cleanup completed"
 }
 
-# 错误处理
+# ----------------------------- 
+# Error handling setup
+# ----------------------------- 
 trap cleanup EXIT
 
-# 参数解析
+# ----------------------------- 
+# Parameter parsing
+# ----------------------------- 
 parse_arguments() {
+    log_info "Parsing command-line arguments..."
+    
+    # Set default values from centralized configuration
+    KERNEL_VERSION="${KERNEL_VERSION_DEFAULT}"
+    DISTRIBUTION="ubuntu"
+    BOOT_SOURCE="${BOOT_SOURCE_DEFAULT}"
+    USE_CACHE="${CACHE_ENABLED_DEFAULT}"
+    
     while [[ $# -gt 0 ]]; do
         case $1 in
             -k|--kernel-version)
@@ -76,6 +104,14 @@ parse_arguments() {
                 OUTPUT_FILE="$2"
                 shift 2
                 ;;
+            --cache)
+                USE_CACHE=true
+                shift 1
+                ;;
+            --no-cache)
+                USE_CACHE=false
+                shift 1
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -87,9 +123,13 @@ parse_arguments() {
                 ;;
         esac
     done
+    
+    log_success "Arguments parsed successfully"
 }
 
-# 显示帮助
+# ----------------------------- 
+# Show help information
+# ----------------------------- 
 show_help() {
     cat << EOF
 Usage: $0 [OPTIONS]
@@ -97,24 +137,30 @@ Usage: $0 [OPTIONS]
 Create boot image for Xiaomi K20 Pro (Raphael)
 
 OPTIONS:
-    -k, --kernel-version VERSION    Kernel version (e.g., 6.18)
-    -d, --distribution DISTRO       Distribution (ubuntu/armbian)
+    -k, --kernel-version VERSION    Kernel version (e.g., 6.18) [default: ${KERNEL_VERSION_DEFAULT}]
+    -d, --distribution DISTRO       Distribution (ubuntu/armbian) [default: ubuntu]
     -b, --boot-source URL           Boot image source URL
     -r, --rootfs-image FILE         Rootfs image file (img format)
     -z, --rootfs-zip FILE           Rootfs image file (zip format)
     -o, --output FILE               Output boot image file
+    --cache                         Enable build cache
+    --no-cache                      Disable build cache [default: ${CACHE_ENABLED_DEFAULT}]
     -h, --help                      Show this help message
 
 EXAMPLES:
-    $0 -k 6.18 -d ubuntu -r root-ubuntu-6.18.img
-    $0 -k 6.18 -d ubuntu -z root-ubuntu-6.18.zip
+    $0 -k 6.18 -d ubuntu -r root-ubuntu-6.18.img --cache
+    $0 -k 6.18 -d ubuntu -z root-ubuntu-6.18.zip --no-cache
     $0 --kernel-version 6.18 --distribution ubuntu --output xiaomi-k20pro-boot.img
 
 EOF
 }
 
-# 验证参数
+# ----------------------------- 
+# Validate arguments
+# ----------------------------- 
 validate_arguments() {
+    log_info "Validating arguments..."
+    
     if [[ -z "$KERNEL_VERSION" ]]; then
         log_error "Kernel version is required"
         show_help
@@ -126,12 +172,13 @@ validate_arguments() {
         log_warning "Distribution not specified, using default: $DISTRIBUTION"
     fi
     
-    if [[ "$DISTRIBUTION" != "ubuntu" && "$DISTRIBUTION" != "armbian" ]]; then
+    # Validate distribution
+    if ! validate_distribution "$DISTRIBUTION" "noble"; then
         log_error "Unsupported distribution: $DISTRIBUTION"
         exit 1
     fi
     
-    # 检查rootfs文件参数
+    # Check rootfs file parameters
     if [[ -z "$ROOTFS_IMAGE" && -z "$ROOTFS_ZIP" ]]; then
         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         log_info "Using default rootfs image: $ROOTFS_IMAGE"
@@ -141,55 +188,75 @@ validate_arguments() {
         exit 1
     fi
     
-    # 设置默认值
-    if [[ -z "$BOOT_SOURCE" ]]; then
-        BOOT_SOURCE="https://example.com/xiaomi-k20pro-boot.img"
-        log_warning "Using default boot source: $BOOT_SOURCE"
-    fi
-    
+    # Set default output file if not specified
     if [[ -z "$OUTPUT_FILE" ]]; then
-        OUTPUT_FILE="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        OUTPUT_FILE=$(printf "${BOOT_OUTPUT_DEFAULT}" "$DISTRIBUTION" "$KERNEL_VERSION")
         log_info "Using default output: $OUTPUT_FILE"
     fi
     
-    # 创建临时目录
+    # Create cache directory
+    BOOT_CACHE_DIR="${CACHE_DIR}/boot-images"
+    mkdir -p "$BOOT_CACHE_DIR"
+    
+    # Create temporary directories
     TEMP_DIR=$(mktemp -d)
     MOUNT_DIR="$TEMP_DIR/boot-mount"
     ROOTFS_MOUNT_DIR="$TEMP_DIR/rootfs-mount"
     
     mkdir -p "$MOUNT_DIR" "$ROOTFS_MOUNT_DIR"
+    
+    log_success "Arguments validated successfully"
+    log_info "Kernel version: $KERNEL_VERSION"
+    log_info "Distribution: $DISTRIBUTION"
+    log_info "Boot source: $BOOT_SOURCE"
+    log_info "Output file: $OUTPUT_FILE"
+    log_info "Use cache: $USE_CACHE"
 }
 
-# 下载boot镜像
+# ----------------------------- 
+# Download boot image
+# ----------------------------- 
 download_boot_image() {
+    local boot_filename=$(basename "$BOOT_SOURCE")
+    local cached_boot="$BOOT_CACHE_DIR/$boot_filename"
     local boot_file="$TEMP_DIR/original-boot.img"
     
     log_info "Downloading boot image from: $BOOT_SOURCE"
     
-    if wget -O "$boot_file" "$BOOT_SOURCE" 2>/dev/null; then
-        log_success "Boot image downloaded successfully"
+    # Check if boot image is in cache
+    if [ "$USE_CACHE" = "true" ] && [ -f "$cached_boot" ]; then
+        log_success "Using cached boot image: $cached_boot"
+        cp "$cached_boot" "$boot_file"
         echo "$boot_file"
     else
-        log_warning "Failed to download boot image, creating empty one"
-        create_empty_boot_image "$boot_file"
-        echo "$boot_file"
+        if wget -O "$cached_boot" "$BOOT_SOURCE" 2>/dev/null; then
+            cp "$cached_boot" "$boot_file"
+            log_success "Boot image downloaded and cached successfully"
+            echo "$boot_file"
+        else
+            log_warning "Failed to download boot image, creating empty one"
+            create_empty_boot_image "$boot_file"
+            echo "$boot_file"
+        fi
     fi
 }
 
-# 创建空的boot镜像
+# ----------------------------- 
+# Create empty boot image
+# ----------------------------- 
 create_empty_boot_image() {
     local boot_file="$1"
     
-    log_info "Creating empty boot image (64MB)..."
+    log_info "Creating empty boot image (${BOOT_IMAGE_SIZE})..."
     
-    # 创建空的镜像文件
-    dd if=/dev/zero of="$boot_file" bs=1M count=64 status=none
+    # Create empty image file
+    dd if=/dev/zero of="$boot_file" bs=1M count=$(echo "${BOOT_IMAGE_SIZE}" | sed 's/[^0-9]//g') status=none
     
-    # 分区和格式化
+    # Partition and format
     parted -s "$boot_file" mklabel gpt
     parted -s "$boot_file" mkpart primary fat32 1MiB 100%
     
-    # 创建loop设备并格式化
+    # Create loop device and format
     local loop_dev=$(sudo losetup --find --show "$boot_file")
     sudo mkfs.fat -F32 "${loop_dev}p1"
     sudo losetup -d "$loop_dev"
@@ -197,13 +264,15 @@ create_empty_boot_image() {
     log_success "Empty boot image created: $boot_file"
 }
 
-# 挂载boot镜像
+# ----------------------------- 
+# Mount boot image
+# ----------------------------- 
 mount_boot_image() {
     local boot_file="$1"
     
     log_info "Mounting boot image..."
     
-    # 挂载boot镜像
+    # Mount boot image
     sudo mount -o loop "$boot_file" "$MOUNT_DIR" || {
         log_error "Failed to mount boot image"
         return 1
@@ -211,12 +280,14 @@ mount_boot_image() {
     
     log_success "Boot image mounted at: $MOUNT_DIR"
     
-    # 显示boot镜像内容
+    # Show boot image contents
     log_info "Boot image contents:"
     ls -la "$MOUNT_DIR/"
 }
 
-# 处理rootfs文件（支持img和zip格式）
+# ----------------------------- 
+# Handle rootfs file (supports img and zip formats)
+# ----------------------------- 
 handle_rootfs_file() {
     if [[ -n "$ROOTFS_ZIP" ]]; then
         log_info "Processing rootfs zip file: $ROOTFS_ZIP"
@@ -226,14 +297,14 @@ handle_rootfs_file() {
             return 1
         fi
         
-        # 解压zip文件
+        # Extract zip file
         log_info "Extracting rootfs zip file..."
         unzip -q "$ROOTFS_ZIP" || {
             log_error "Failed to extract zip file: $ROOTFS_ZIP"
             return 1
         }
         
-        # 查找解压后的img文件
+        # Find extracted img file
         ROOTFS_IMAGE=$(ls root-*.img | head -1)
         if [[ -z "$ROOTFS_IMAGE" ]]; then
             log_error "No img file found in zip archive"
@@ -255,7 +326,9 @@ handle_rootfs_file() {
     fi
 }
 
-# 获取rootfs UUID
+# ----------------------------- 
+# Extract rootfs UUID
+# ----------------------------- 
 extract_rootfs_uuid() {
     log_info "Extracting UUID from rootfs image: $ROOTFS_IMAGE"
     
@@ -274,17 +347,19 @@ extract_rootfs_uuid() {
     log_success "Rootfs UUID: $ROOTFS_UUID"
 }
 
-# 挂载rootfs并复制内核文件
+# ----------------------------- 
+# Mount rootfs and copy kernel files
+# ----------------------------- 
 copy_kernel_files() {
     log_info "Mounting rootfs and copying kernel files..."
     
-    # 挂载rootfs
+    # Mount rootfs
     sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
         log_error "Failed to mount rootfs image"
         return 1
     }
     
-    # 查找内核文件
+    # Find kernel files
     local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
     local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
     
@@ -298,24 +373,26 @@ copy_kernel_files() {
     echo "  - vmlinuz: $vmlinuz_file"
     echo "  - initrd: $initrd_file"
     
-    # 复制到boot镜像
+    # Copy to boot image
     sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
     sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
     
     log_success "Kernel files copied to boot image"
     
-    # 卸载rootfs
+    # Unmount rootfs
     sudo umount "$ROOTFS_MOUNT_DIR"
 }
 
-# 更新boot loader配置
+# ----------------------------- 
+# Update boot loader configuration
+# ----------------------------- 
 update_boot_config() {
     log_info "Updating boot loader configuration..."
     
-    # 创建loader目录结构
+    # Create loader directory structure
     sudo mkdir -p "$MOUNT_DIR/loader/entries"
     
-    # 创建Ubuntu启动配置
+    # Create Ubuntu boot configuration
     sudo tee "$MOUNT_DIR/loader/entries/ubuntu.conf" > /dev/null << EOF
 title  Ubuntu
 sort-key ubuntu
@@ -327,16 +404,18 @@ EOF
     
     log_success "Boot loader configuration updated"
     
-    # 显示配置内容
+    # Show configuration content
     log_info "Boot configuration:"
     cat "$MOUNT_DIR/loader/entries/ubuntu.conf"
 }
 
-# 验证boot镜像内容
+# ----------------------------- 
+# Verify boot image contents
+# ----------------------------- 
 verify_boot_image() {
     log_info "Verifying boot image contents..."
     
-    # 检查关键文件
+    # Check critical files
     if [[ ! -f "$MOUNT_DIR/linux.efi" ]]; then
         log_error "linux.efi not found in boot image"
         return 1
@@ -354,50 +433,67 @@ verify_boot_image() {
     
     log_success "Boot image verification passed"
     
-    # 显示最终内容
+    # Show final content
     log_info "Final boot image structure:"
     ls -la "$MOUNT_DIR/"
     echo "--- Loader entries ---"
     ls -la "$MOUNT_DIR/loader/entries/"
 }
 
-# 卸载并保存boot镜像
+# ----------------------------- 
+# Unmount and save boot image
+# ----------------------------- 
 finalize_boot_image() {
     local original_boot="$1"
     
     log_info "Finalizing boot image..."
     
-    # 卸载boot镜像
+    # Unmount boot image
     sudo umount "$MOUNT_DIR"
     
-    # 复制到输出文件
+    # Copy to output file
     cp "$original_boot" "$OUTPUT_FILE"
     
     log_success "Boot image finalized: $OUTPUT_FILE"
     
-    # 显示文件信息
+    # Show file information
     ls -lh "$OUTPUT_FILE"
 }
 
-# 主函数
+# ----------------------------- 
+# Main function
+# ----------------------------- 
 main() {
     log_info "Starting boot image creation for Xiaomi K20 Pro (Raphael)"
-    log_info "Kernel: $KERNEL_VERSION, Distribution: $DISTRIBUTION"
     
-    # 参数解析和验证
+    # Step 1: Parse arguments
     parse_arguments "$@"
+    
+    # Step 2: Validate arguments
     validate_arguments
     
-    # 处理rootfs文件（支持img和zip）
+    # Step 3: Handle rootfs file (supports img and zip)
     handle_rootfs_file
     
-    # 执行构建步骤
+    # Step 4: Download or create boot image
     local boot_file=$(download_boot_image)
+    
+    # Step 5: Mount boot image
     mount_boot_image "$boot_file"
+    
+    # Step 6: Extract rootfs UUID
     extract_rootfs_uuid
+    
+    # Step 7: Copy kernel files
     copy_kernel_files
+    
+    # Step 8: Update boot configuration
     update_boot_config
+    
+    # Step 9: Verify boot image
     verify_boot_image
+    
+    # Step 10: Finalize boot image
     finalize_boot_image "$boot_file"
     
     log_success "Boot image creation completed successfully!"
@@ -405,7 +501,9 @@ main() {
     log_info "RootFS UUID: $ROOTFS_UUID"
 }
 
-# 脚本入口
+# ----------------------------- 
+# Script execution
+# ----------------------------- 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
