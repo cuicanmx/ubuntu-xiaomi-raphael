@@ -161,7 +161,7 @@ install_dependencies() {
     # Update package list
     sudo apt update
     
-    # Install required packages
+    # Install required packages including ccache
     sudo apt install -y \
         crossbuild-essential-arm64 \
         git \
@@ -175,7 +175,8 @@ install_dependencies() {
         u-boot-tools \
         dpkg-dev \
         debhelper \
-        fakeroot
+        fakeroot \
+        ccache
     
     log_success "Dependencies installed successfully"
 }
@@ -225,8 +226,12 @@ configure_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Use the exact command from user's requirements
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig sm8150.config
+    # Set up ccache environment
+    export CCACHE_DIR="${CCACHE_DIR}"
+    export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    
+    # Use the exact command from user's requirements with ccache
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
         log_error "Kernel configuration failed"
@@ -245,8 +250,12 @@ build_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Use the exact command from user's requirements
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+    # Set up ccache environment
+    export CCACHE_DIR="${CCACHE_DIR}"
+    export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    
+    # Use the exact command from user's requirements with ccache
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
         log_error "Kernel build failed"
@@ -256,6 +265,12 @@ build_kernel() {
     # Get the actual kernel version from the build
     _kernel_version="$(make kernelrelease -s)"
     export _kernel_version
+    
+    # Show ccache statistics
+    if command -v ccache >/dev/null 2>&1; then
+        log_info "ccache statistics:"
+        ccache -s
+    fi
     
     log_success "Kernel built successfully (version: $_kernel_version)"
     cd - > /dev/null
@@ -326,6 +341,30 @@ create_kernel_package() {
 # Main function
 # ----------------------------- 
 main() {
+    # Set up ccache if enabled
+    if [ "$CACHE_ENABLED" = "true" ]; then
+        log_info "Configuring ccache..."
+        
+        # Create ccache directory if it doesn't exist
+        mkdir -p "${CCACHE_DIR}"
+        
+        # Set ccache maximum size
+        echo "max_size = ${CCACHE_MAXSIZE}" > "${CCACHE_DIR}/ccache.conf" 2>/dev/null || true
+        
+        # Set up ccache symlinks for cross-compilers
+        mkdir -p "${CCACHE_DIR}/bin"
+        for c in aarch64-linux-gnu-gcc aarch64-linux-gnu-g++; do
+            ln -sf "$(which ccache)" "${CCACHE_DIR}/bin/$c" 2>/dev/null || true
+        done
+        
+        # Make ccache directory writable
+        sudo chmod -R 777 "${CCACHE_DIR}" 2>/dev/null || true
+        
+        log_success "ccache configured successfully"
+    else
+        log_info "Cache disabled, skipping ccache configuration"
+    fi
+    
     log_info "Starting kernel build for Xiaomi K20 Pro (Raphael)"
     
     # Step 1: Parse command-line arguments

@@ -76,8 +76,8 @@ OUTPUT_DIR="${WORKING_DIR}/output"   # Output directory
 # Cache Configuration
 # ----------------------------- 
 CACHE_ENABLED_DEFAULT=true           # Default enable build cache
-CACHE_DIR="${HOME}/.cache/raphael-build"  # Cache directory
-CACHE_LIMIT="10G"                    # Cache size limit
+CCACHE_DIR="${HOME}/.ccache"         # ccache directory
+CCACHE_MAXSIZE="5G"                  # ccache maximum size
 
 # ----------------------------- 
 # Supported Distributions

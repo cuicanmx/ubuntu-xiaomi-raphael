@@ -18,6 +18,10 @@ jobs:
     build-kernel:
       name: Build Kernel Packages
       runs-on: ubuntu-latest
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+        CCACHE_MAXSIZE: 5G
+        ARCH: arm64
       
       steps:
       - name: Checkout repository
@@ -34,18 +38,50 @@ jobs:
             bc \
             git \
             gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-            
-      - name: Cache kernel source
+            g++-aarch64-linux-gnu \
+            ccache
+
+      - name: Cache build dependencies
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cache
-            output/
-          key: ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-${{ hashFiles('build-config.sh', 'raphael-kernel_build.sh') }}
+            ~/.cache/apt
+            /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/raphael-kernel_build.sh') }}
           restore-keys: |
-            ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}
+            ${{ runner.os }}-apt-
+            
+      - name: Cache kernel build
+        uses: actions/cache@v3
+        with:
+          path: |
+            kernel-cache/
+            linux-*/
+            .ccache/
+            output/
+          key: ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh', '**/DEBIAN/control') }}
+          restore-keys: |
+            ${{ runner.os }}-kernel-${{ github.event.inputs.kernel_version }}-
             ${{ runner.os }}-kernel-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p ${{ env.CCACHE_DIR }}
+          echo "max_size = ${{ env.CCACHE_MAXSIZE }}" > ${{ env.CCACHE_DIR }}/ccache.conf || true
+          mkdir -p ${{ env.CCACHE_DIR }}/bin
+          for c in aarch64-linux-gnu-gcc aarch64-linux-gnu-g++; do
+            ln -sf $(which ccache) ${{ env.CCACHE_DIR }}/bin/$c || true
+          done
+          sudo chmod -R 777 ${{ env.CCACHE_DIR }}
+
+      - name: Restore ccache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh') }}
+          restore-keys: |
+            kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-
+            kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-
             
       - name: Build kernel packages
         run: |
