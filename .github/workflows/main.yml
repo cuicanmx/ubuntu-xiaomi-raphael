@@ -314,8 +314,8 @@ jobs:
          path: ./rootfs-images
          
      - name: Create release
-      uses: softprops/action-gh-release@v1
-      with:
+       uses: softprops/action-gh-release@v1
+       with:
         tag_name: ${{ github.event.inputs.release_tag }}
         name: "Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}"
         body: |
@@ -353,9 +353,9 @@ jobs:
           - Kernel version: ${{ github.event.inputs.kernel_version }}
           - Distribution: ${{ github.event.inputs.distribution }}
           - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
-           
-         files: |
-           rootfs-images/*.img
-           rootfs-images/*.zip
-         draft: false
-         prerelease: false
+          
+        files: |
+          rootfs-images/*.img
+          rootfs-images/*.zip
+        draft: false
+        prerelease: false
