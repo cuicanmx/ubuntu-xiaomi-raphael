@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
 
-  jobs:
+jobs:
     build-kernel:
       name: Build Kernel Packages
       runs-on: ubuntu-latest
