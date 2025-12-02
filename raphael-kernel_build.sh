@@ -171,7 +171,7 @@ install_dependencies() {
         bison \
         flex \
         libssl-dev \
-        dtc \
+        device-tree-compiler \
         u-boot-tools \
         dpkg-dev \
         debhelper \

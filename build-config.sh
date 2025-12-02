@@ -115,7 +115,6 @@ dependency_check_kernel_build() {
     is_command_available "bc" "Basic calculator" || ((errors++))
     is_command_available "bison" "Bison parser generator" || ((errors++))
     is_command_available "flex" "Flex lexical analyzer" || ((errors++))
-    is_command_available "libssl-dev" "OpenSSL development libraries" || ((errors++))
     is_command_available "dtc" "Device Tree Compiler" || ((errors++))
     is_command_available "mkimage" "U-Boot image creator" || ((errors++))
     is_command_available "dpkg-deb" "Debian package builder" || ((errors++))
