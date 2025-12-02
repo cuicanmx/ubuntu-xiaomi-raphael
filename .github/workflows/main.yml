@@ -221,7 +221,7 @@ jobs:
 
     - name: Upload rootfs image
       uses: actions/upload-artifact@v4
-       with:
+      with:
          name: xiaomi-raphael-rootfs_${{ github.event.inputs.distribution }}_${{ github.event.inputs.kernel_version }}
          path: "root-*.img"
          retention-days: 30
