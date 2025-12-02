@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Enhanced rootfs build script with Armbian support and better error handling
+# Enhanced rootfs build script with Armbian support, skip kernel build option, and better error handling
 
 if [ "$(id -u)" -ne 0 ]
 then
@@ -10,16 +10,27 @@ fi
 
 # Parse command line arguments
 if [ $# -lt 3 ]; then
-  echo "Usage: $0 <distribution> <version> <kernel_version>"
+  echo "Usage: $0 <distribution> <version> <kernel_version> [desktop_environment] [--skip-kernel-build]"
   echo "  distribution: ubuntu|armbian"
   echo "  version: for ubuntu: version name, for armbian: noble"
   echo "  kernel_version: e.g., 6.17"
+  echo "  desktop_environment: (optional) for ubuntu only"
+  echo "  --skip-kernel-build: (optional) use existing device packages instead of building kernel"
   exit 1
 fi
 
 DISTRO=$1
 VERSION=$2
 KERNEL_VERSION=$3
+
+# Check for skip kernel build flag
+SKIP_KERNEL_BUILD=false
+if [ $# -ge 4 ] && [ "$4" = "--skip-kernel-build" ]; then
+  SKIP_KERNEL_BUILD=true
+fi
+if [ $# -ge 5 ] && [ "$5" = "--skip-kernel-build" ]; then
+  SKIP_KERNEL_BUILD=true
+fi
 
 # Set distribution-specific variables
 case "$DISTRO" in
@@ -135,7 +146,28 @@ fi
 
 # Install device packages (common for both distributions)
 echo "? Installing device packages..."
-cp xiaomi-raphael-debs_$KERNEL_VERSION/*-xiaomi-raphael.deb rootdir/tmp/
+
+if [ "$SKIP_KERNEL_BUILD" = "true" ]; then
+  echo "? Skipping kernel build, using existing device packages..."
+  # Check if device packages directory exists
+  if [ -d "xiaomi-raphael-debs_$KERNEL_VERSION" ]; then
+    cp xiaomi-raphael-debs_$KERNEL_VERSION/*-xiaomi-raphael.deb rootdir/tmp/ || { echo "?? Failed to copy existing device packages"; exit 1; }
+  else
+    echo "?? Device packages directory not found: xiaomi-raphael-debs_$KERNEL_VERSION"
+    echo "?? Please ensure device packages are available or remove --skip-kernel-build flag"
+    exit 1
+  fi
+else
+  echo "? Using freshly built device packages..."
+  # Ensure kernel build directory exists
+  if [ ! -d "kernel-debs" ]; then
+    echo "?? Kernel packages directory not found: kernel-debs"
+    echo "?? Please build kernel first or use --skip-kernel-build flag"
+    exit 1
+  fi
+  cp kernel-debs/*-xiaomi-raphael.deb rootdir/tmp/ || { echo "?? Failed to copy kernel packages"; exit 1; }
+fi
+
 chroot rootdir dpkg -i /tmp/linux-xiaomi-raphael.deb || { echo "?? Kernel package installation had issues"; }
 chroot rootdir dpkg -i /tmp/firmware-xiaomi-raphael.deb || { echo "?? Firmware package installation had issues"; }
 chroot rootdir dpkg -i /tmp/alsa-xiaomi-raphael.deb || { echo "?? ALSA package installation had issues"; }
