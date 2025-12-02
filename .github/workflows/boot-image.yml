@@ -50,25 +50,41 @@ jobs:
           kmod \
           rsync
           
-    - name: Download rootfs image
+    - name: Download and extract rootfs image
       run: |
-        echo " Downloading rootfs image..."
+        echo "📥 Downloading compressed rootfs image..."
         
-        # 从GitHub Release下载rootfs镜像
+        # 优先下载zip压缩包
         gh release download $RELEASE_TAG \
-          --pattern "root-*$DISTRIBUTION*.img" \
+          --pattern "root-*$DISTRIBUTION*.zip" \
           --repo ${{ github.repository }} || {
-          echo "⚠️ Failed to download rootfs from release, trying artifacts"
-          # 从工作流产物下载
-          gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
-            echo "❌ No rootfs image found"
-            exit 1
+          echo "⚠️ Failed to download zip from release, trying img file"
+          # 如果zip不存在，下载img文件
+          gh release download $RELEASE_TAG \
+            --pattern "root-*$DISTRIBUTION*.img" \
+            --repo ${{ github.repository }} || {
+            echo "⚠️ Failed to download rootfs from release, trying artifacts"
+            # 从工作流产物下载
+            gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
+              echo "❌ No rootfs image found"
+              exit 1
+            }
           }
         }
         
+        # 如果是zip文件，则解压
+        if ls root-*.zip 1> /dev/null 2>&1; then
+          echo "🗜️ Extracting rootfs zip file..."
+          ZIP_FILE=$(ls root-*.zip | head -1)
+          unzip "$ZIP_FILE"
+          echo "✅ Extracted: $ZIP_FILE"
+          # 删除zip文件以节省空间
+          rm "$ZIP_FILE"
+        fi
+        
         ROOTFS_IMG=$(ls root-*.img | head -1)
         if [ -z "$ROOTFS_IMG" ]; then
-          echo "❌ No rootfs image found"
+          echo "❌ No rootfs image found after extraction"
           exit 1
         fi
         

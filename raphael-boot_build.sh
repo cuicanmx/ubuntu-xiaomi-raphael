@@ -68,6 +68,10 @@ parse_arguments() {
                 ROOTFS_IMAGE="$2"
                 shift 2
                 ;;
+            -z|--rootfs-zip)
+                ROOTFS_ZIP="$2"
+                shift 2
+                ;;
             -o|--output)
                 OUTPUT_FILE="$2"
                 shift 2
@@ -96,12 +100,14 @@ OPTIONS:
     -k, --kernel-version VERSION    Kernel version (e.g., 6.18)
     -d, --distribution DISTRO       Distribution (ubuntu/armbian)
     -b, --boot-source URL           Boot image source URL
-    -r, --rootfs-image FILE         Rootfs image file
+    -r, --rootfs-image FILE         Rootfs image file (img format)
+    -z, --rootfs-zip FILE           Rootfs image file (zip format)
     -o, --output FILE               Output boot image file
     -h, --help                      Show this help message
 
 EXAMPLES:
     $0 -k 6.18 -d ubuntu -r root-ubuntu-6.18.img
+    $0 -k 6.18 -d ubuntu -z root-ubuntu-6.18.zip
     $0 --kernel-version 6.18 --distribution ubuntu --output xiaomi-k20pro-boot.img
 
 EOF
@@ -125,15 +131,20 @@ validate_arguments() {
         exit 1
     fi
     
+    # 检查rootfs文件参数
+    if [[ -z "$ROOTFS_IMAGE" && -z "$ROOTFS_ZIP" ]]; then
+        ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        log_info "Using default rootfs image: $ROOTFS_IMAGE"
+    elif [[ -n "$ROOTFS_IMAGE" && -n "$ROOTFS_ZIP" ]]; then
+        log_error "Cannot specify both --rootfs-image and --rootfs-zip"
+        show_help
+        exit 1
+    fi
+    
     # 设置默认值
     if [[ -z "$BOOT_SOURCE" ]]; then
         BOOT_SOURCE="https://example.com/xiaomi-k20pro-boot.img"
         log_warning "Using default boot source: $BOOT_SOURCE"
-    fi
-    
-    if [[ -z "$ROOTFS_IMAGE" ]]; then
-        ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-        log_info "Using default rootfs image: $ROOTFS_IMAGE"
     fi
     
     if [[ -z "$OUTPUT_FILE" ]]; then
@@ -203,6 +214,45 @@ mount_boot_image() {
     # 显示boot镜像内容
     log_info "Boot image contents:"
     ls -la "$MOUNT_DIR/"
+}
+
+# 处理rootfs文件（支持img和zip格式）
+handle_rootfs_file() {
+    if [[ -n "$ROOTFS_ZIP" ]]; then
+        log_info "Processing rootfs zip file: $ROOTFS_ZIP"
+        
+        if [[ ! -f "$ROOTFS_ZIP" ]]; then
+            log_error "Rootfs zip file not found: $ROOTFS_ZIP"
+            return 1
+        fi
+        
+        # 解压zip文件
+        log_info "Extracting rootfs zip file..."
+        unzip -q "$ROOTFS_ZIP" || {
+            log_error "Failed to extract zip file: $ROOTFS_ZIP"
+            return 1
+        }
+        
+        # 查找解压后的img文件
+        ROOTFS_IMAGE=$(ls root-*.img | head -1)
+        if [[ -z "$ROOTFS_IMAGE" ]]; then
+            log_error "No img file found in zip archive"
+            return 1
+        fi
+        
+        log_success "Extracted rootfs image: $ROOTFS_IMAGE"
+        
+    elif [[ -n "$ROOTFS_IMAGE" ]]; then
+        log_info "Using rootfs image file: $ROOTFS_IMAGE"
+        
+        if [[ ! -f "$ROOTFS_IMAGE" ]]; then
+            log_error "Rootfs image file not found: $ROOTFS_IMAGE"
+            return 1
+        fi
+    else
+        log_error "No rootfs file specified"
+        return 1
+    fi
 }
 
 # 获取rootfs UUID
@@ -337,6 +387,9 @@ main() {
     # 参数解析和验证
     parse_arguments "$@"
     validate_arguments
+    
+    # 处理rootfs文件（支持img和zip）
+    handle_rootfs_file
     
     # 执行构建步骤
     local boot_file=$(download_boot_image)

@@ -224,11 +224,25 @@ jobs:
          
          echo "✅ RootFS artifacts validated successfully"
 
-    - name: Upload rootfs image
+    - name: Compress rootfs image to zip
+      run: |
+         echo "🗜️ Compressing rootfs image to zip..."
+         ROOTFS_IMAGE=$(ls root-*.img | head -1)
+         ZIP_NAME="${ROOTFS_IMAGE%.img}.zip"
+         
+         # 压缩镜像文件
+         zip -9 "$ZIP_NAME" "$ROOTFS_IMAGE"
+         
+         echo "✅ Compressed: $ZIP_NAME"
+         ls -lh "$ZIP_NAME"
+         
+    - name: Upload rootfs image and zip
       uses: actions/upload-artifact@v4
       with:
          name: xiaomi-raphael-rootfs_${{ github.event.inputs.distribution }}_${{ github.event.inputs.kernel_version }}
-         path: "root-*.img"
+         path: |
+           root-*.img
+           root-*.zip
          retention-days: 30
 
   release:
@@ -255,8 +269,9 @@ jobs:
          body: |
            # Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}
            
-           ## RootFS Image
-           - root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+           ## RootFS Images
+           - **Full Image**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+           - **Compressed**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (recommended for boot image builds)
            
            ## Build Information
            - Distribution: ${{ github.event.inputs.distribution }}
@@ -265,7 +280,12 @@ jobs:
            - Architecture: ARM64
            - Target Device: Xiaomi Raphael (K20 Pro)
            
+           ## Usage Notes
+           - For boot image creation, download the .zip file for faster transfer
+           - Extract the .img file from the .zip before use
+           
          files: |
            rootfs-images/*.img
+           rootfs-images/*.zip
          draft: false
          prerelease: false
