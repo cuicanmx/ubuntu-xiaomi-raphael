@@ -136,16 +136,22 @@ jobs:
         # Verify downloaded packages
         echo "🔍 Verifying downloaded kernel packages:"
         
-        REQUIRED_PACKAGES=("linux-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb" 
-                          "firmware-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb"
-                          "alsa-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb")
+        # Use wildcard pattern to match actual package names with full version
+        REQUIRED_PACKAGES=("linux-xiaomi-raphael_*_arm64.deb" 
+                          "firmware-xiaomi-raphael_*_arm64.deb"
+                          "alsa-xiaomi-raphael_*_arm64.deb")
         
-        for pkg in "${REQUIRED_PACKAGES[@]}"; do
-          if [ -f "$pkg" ]; then
-            echo "✅ Found: $pkg"
-            dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
+        for pkg_pattern in "${REQUIRED_PACKAGES[@]}"; do
+          # Find the actual package file matching the pattern
+          pkg_file=$(find . -name "$pkg_pattern" -type f | head -1)
+          
+          if [ -f "$pkg_file" ]; then
+            echo "✅ Found: $pkg_file"
+            dpkg-deb -I "$pkg_file" || echo "⚠️ Package verification failed for $pkg_file"
           else
-            echo "❌ Missing: $pkg"
+            echo "❌ Missing package matching pattern: $pkg_pattern"
+            echo "📁 Available files:"
+            ls -la *.deb 2>/dev/null || echo "No .deb files found"
             exit 1
           fi
         done
@@ -162,16 +168,22 @@ jobs:
       run: |
         echo "🔍 Verifying kernel packages from artifacts:"
         
-        REQUIRED_PACKAGES=("linux-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb" 
-                          "firmware-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb"
-                          "alsa-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb")
+        # Use wildcard pattern to match actual package names with full version
+        REQUIRED_PACKAGES=("linux-xiaomi-raphael_*_arm64.deb" 
+                          "firmware-xiaomi-raphael_*_arm64.deb"
+                          "alsa-xiaomi-raphael_*_arm64.deb")
         
-        for pkg in "${REQUIRED_PACKAGES[@]}"; do
-          if [ -f "$pkg" ]; then
-            echo "✅ Found: $pkg"
-            dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
+        for pkg_pattern in "${REQUIRED_PACKAGES[@]}"; do
+          # Find the actual package file matching the pattern
+          pkg_file=$(find . -name "$pkg_pattern" -type f | head -1)
+          
+          if [ -f "$pkg_file" ]; then
+            echo "✅ Found: $pkg_file"
+            dpkg-deb -I "$pkg_file" || echo "⚠️ Package verification failed for $pkg_file"
           else
-            echo "❌ Missing: $pkg"
+            echo "❌ Missing package matching pattern: $pkg_pattern"
+            echo "📁 Available files:"
+            ls -la *.deb 2>/dev/null || echo "No .deb files found"
             exit 1
           fi
         done
