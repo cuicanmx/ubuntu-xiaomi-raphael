@@ -341,10 +341,10 @@ configure_kernel() {
     fi
     
     log_info "🔧 正在运行内核配置..."
-    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
+    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\" defconfig sm8150.config"
     
-    # 使用用户需求中的确切命令，包含ccache
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
+    # 使用ccache包装器，通过PATH环境变量自动拦截编译器调用
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核配置失败"
@@ -387,11 +387,11 @@ build_kernel() {
     fi
     
     log_info "🔨 开始内核编译..."
-    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
+    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\""
     log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    # 使用用户需求中的确切命令，包含ccache
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
+    # 使用ccache包装器，通过PATH环境变量自动拦截编译器调用
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核构建失败"
