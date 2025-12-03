@@ -21,7 +21,7 @@ permissions:
 jobs:
     build-kernel:
       name: Build Kernel Packages
-      runs-on: ubuntu-latest
+      runs-on: ubuntu-24.04-arm
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         CCACHE_MAXSIZE: 5G

@@ -63,7 +63,7 @@ jobs:
   # Build root filesystem
   rootfs:
     name: Build RootFS
-    runs-on: ubuntu-latest  
+    runs-on: ubuntu-24.04-arm  
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -344,7 +344,7 @@ jobs:
 
   release:
      name: Create Release
-     runs-on: ubuntu-latest
+     runs-on: ubuntu-24.04-arm
      needs: [rootfs]
      if: github.event.inputs.release_tag != ''
      
