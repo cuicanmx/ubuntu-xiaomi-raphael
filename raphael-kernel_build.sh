@@ -227,8 +227,17 @@ configure_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     # Set up ccache environment
-    export CCACHE_DIR="${CCACHE_DIR}"
+    export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+    export CC="ccache gcc"
+    export CXX="ccache g++"
     export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    
+    # Verify ccache is available
+    if command -v ccache >/dev/null 2>&1; then
+        log_info "Using ccache with cache directory: $CCACHE_DIR"
+        ccache -M 5G 2>/dev/null || true
+        ccache -s
+    fi
     
     # Use the exact command from user's requirements with ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
@@ -251,8 +260,16 @@ build_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     # Set up ccache environment
-    export CCACHE_DIR="${CCACHE_DIR}"
+    export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+    export CC="ccache gcc"
+    export CXX="ccache g++"
     export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    
+    # Verify ccache is available
+    if command -v ccache >/dev/null 2>&1; then
+        log_info "Using ccache for kernel build"
+        log_info "ccache directory: $CCACHE_DIR"
+    fi
     
     # Use the exact command from user's requirements with ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
@@ -319,11 +336,22 @@ create_kernel_package() {
     mkdir -p "${OUTPUT_DIR}/dtbs"
     
     # Copy standalone kernel image and DTB files for GitHub Actions
+    # First, copy with the full kernel version for consistency
     cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${_kernel_version}"
     cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" "${OUTPUT_DIR}/dtbs/"
     
+    # Also copy with the user-provided version for GitHub Actions compatibility
+    if [ -n "${KERNEL_VERSION}" ]; then
+        cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}"
+    fi
+    
     # Build the kernel package
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
+    
+    # Verify the output directory structure
+    log_info "Verifying output directory structure:"
+    ls -la "${OUTPUT_DIR}/"
+    ls -la "${OUTPUT_DIR}/dtbs/" 2>/dev/null || echo "DTB directory not found"
     
     # Build firmware and ALSA packages
     dpkg-deb --build --root-owner-group firmware-xiaomi-raphael
@@ -355,8 +383,13 @@ main() {
         # Create ccache directory if it doesn't exist
         mkdir -p "${CCACHE_DIR}"
         
-        # Set ccache maximum size
-        echo "max_size = ${CCACHE_MAXSIZE}" > "${CCACHE_DIR}/ccache.conf" 2>/dev/null || true
+        # Set ccache configuration directly using ccache commands
+        if command -v ccache >/dev/null 2>&1; then
+            ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
+            ccache -o compiler_check=content
+            ccache -o compress=true
+            ccache -o sloppiness=file_macro,locale,time_stamp
+        fi
         
         # Set up ccache symlinks for cross-compilers
         mkdir -p "${CCACHE_DIR}/bin"
@@ -366,6 +399,11 @@ main() {
         
         # Make ccache directory writable
         sudo chmod -R 777 "${CCACHE_DIR}" 2>/dev/null || true
+        
+        # Show ccache status
+        if command -v ccache >/dev/null 2>&1; then
+            ccache -s
+        fi
         
         log_success "ccache configured successfully"
     else

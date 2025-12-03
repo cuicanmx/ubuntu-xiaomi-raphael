@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
     build-kernel:
@@ -24,6 +25,9 @@ jobs:
       env:
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         CCACHE_MAXSIZE: 5G
+        CCACHE_COMPILERCHECK: content
+        CCACHE_COMPRESS: true
+        CCACHE_SLOPPINESS: file_macro,locale,time_stamp
         ARCH: arm64
       
       steps:

@@ -76,7 +76,7 @@ OUTPUT_DIR="${WORKING_DIR}/output"   # Output directory
 # Cache Configuration
 # ----------------------------- 
 CACHE_ENABLED_DEFAULT=true           # Default enable build cache
-CCACHE_DIR="${HOME}/.ccache"         # ccache directory
+CCACHE_DIR="${GITHUB_WORKSPACE:-$HOME}/.ccache"  # ccache directory (use GitHub workspace if available)
 CCACHE_MAXSIZE="5G"                  # ccache maximum size
 
 # ----------------------------- 
