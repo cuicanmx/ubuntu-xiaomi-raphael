@@ -515,16 +515,24 @@ main() {
     log_info "   - Architecture: ARM64"
     log_info "   - Build started at: $(date)"
     
-    # Show initial ccache status if cache is enabled
-    if [ "$CACHE_ENABLED" = "true" ] && command -v ccache >/dev/null 2>&1; then
-        log_info "Cache enabled, checking ccache status..."
-        log_info "ccache directory: $CCACHE_DIR"
-        log_info "Initial ccache status:"
-        ccache -s 2>/dev/null || log_warning "Could not get initial ccache status"
-    elif [ "$CACHE_ENABLED" = "false" ]; then
-        log_info "Cache disabled, building without ccache"
+    # Show initial ccache status if cache is enabled or in GitHub Actions environment
+    if [ "$CACHE_ENABLED" = "true" ] || [ -n "$GITHUB_ACTIONS" ]; then
+        if command -v ccache >/dev/null 2>&1; then
+            log_info "🔧 ccache status (GitHub Actions environment):"
+            log_info "📁 ccache directory: $CCACHE_DIR"
+            ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
+            
+            # Check if ccache directory is accessible
+            if [ -n "$CCACHE_DIR" ] && [ -d "$CCACHE_DIR" ]; then
+                log_info "📁 ccache directory: $CCACHE_DIR (accessible)"
+            else
+                log_warning "⚠️ ccache directory not accessible"
+            fi
+        else
+            log_warning "⚠️ ccache command not found in PATH"
+        fi
     else
-        log_warning "ccache not available, building without cache"
+        log_info "🔧 Building without ccache (cache disabled)"
     fi
     
     # Parse command-line arguments
