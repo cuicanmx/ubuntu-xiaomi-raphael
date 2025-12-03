@@ -4,6 +4,30 @@
 # Standardized implementation with centralized configuration
 
 set -e  # Exit on any error
+set -o pipefail  # Exit on pipe failures
+
+# ----------------------------- 
+# Error handling and recovery
+# ----------------------------- 
+handle_error() {
+    local exit_code=$?
+    local line_number=$1
+    local function_name=$2
+    
+    log_error "❌ Error occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
+    
+    # Show current directory and environment info for debugging
+    log_info "📁 Current directory: $(pwd)"
+    log_info "🔧 Environment variables:"
+    env | grep -E "(CCACHE|ARCH|CROSS_COMPILE|KERNEL)" || true
+    
+    # Attempt to cleanup before exiting
+    cleanup
+    
+    exit $exit_code
+}
+
+trap 'handle_error $LINENO ${FUNCNAME[0]:-main}' ERR
 
 # ----------------------------- 
 # Load centralized configuration
@@ -44,10 +68,19 @@ log_error() {
 # Cleanup function
 # ----------------------------- 
 cleanup() {
-    log_info "Cleaning up..."
+    log_info "Cleaning up temporary directories..."
     
-    # Clean up temporary files and directories
-    rm -rf "$TEMP_DIR"
+    # Clean up temporary files and directories with error handling
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+        log_info "Removing temporary directory: $TEMP_DIR"
+        rm -rf "$TEMP_DIR" 2>/dev/null || {
+            log_warning "Failed to remove temporary directory: $TEMP_DIR"
+            # Try with sudo if permission issues
+            sudo rm -rf "$TEMP_DIR" 2>/dev/null || log_warning "Could not remove temporary directory even with sudo"
+        }
+    else
+        log_info "No temporary directory to clean up"
+    fi
     
     log_success "Cleanup completed"
 }
@@ -137,9 +170,9 @@ validate_parameters() {
     # Set kernel branch name based on version
     KERNEL_BRANCH="${KERNEL_BRANCH_PREFIX}${KERNEL_VERSION}"
     
-    # Set up directory paths
+    # Set up directory paths with consistent naming
     TEMP_DIR="$(mktemp -d)"
-    KERNEL_BUILD_DIR="${TEMP_DIR}/linux-${KERNEL_VERSION}"
+    KERNEL_BUILD_DIR="${TEMP_DIR}/linux"
     OUTPUT_DIR="${WORKING_DIR}/output/kernel"
     
     # Create output directory
@@ -148,6 +181,7 @@ validate_parameters() {
     log_success "Parameters validated successfully"
     log_info "Kernel version: $KERNEL_VERSION"
     log_info "Kernel branch: $KERNEL_BRANCH"
+    log_info "Temporary directory: $TEMP_DIR"
     log_info "Build directory: $KERNEL_BUILD_DIR"
     log_info "Output directory: $OUTPUT_DIR"
 }
@@ -185,14 +219,27 @@ install_dependencies() {
 # Check dependencies
 # ----------------------------- 
 check_dependencies() {
-    log_info "Checking build dependencies..."
+    log_info "🔍 Checking build dependencies..."
     
-    # Use the centralized dependency check function
-    if dependency_check_kernel_build; then
-        log_success "All dependencies are already installed"
+    # Check for essential cross-compilation tools
+    local required_tools=("aarch64-linux-gnu-gcc" "aarch64-linux-gnu-g++" "make" "git" "ccache")
+    local missing_tools=()
+    
+    for tool in "${required_tools[@]}"; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing_tools+=("$tool")
+        fi
+    done
+    
+    if [ ${#missing_tools[@]} -eq 0 ]; then
+        log_success "All essential dependencies are available"
         return 0
     else
-        log_warning "Missing dependencies, installing them..."
+        log_warning "Missing dependencies: ${missing_tools[*]}"
+        log_warning "Dependencies should be installed in the GitHub Actions workflow"
+        log_warning "Attempting to install missing dependencies..."
+        
+        # Fallback: try to install missing dependencies
         install_dependencies
         return $?
     fi
@@ -202,52 +249,71 @@ check_dependencies() {
 # Clone kernel source
 # ----------------------------- 
 clone_kernel_source() {
-    log_info "Cloning kernel source from ${KERNEL_REPO} (${KERNEL_BRANCH})..."
+    log_info "📥 Cloning kernel source from ${KERNEL_REPO} (${KERNEL_BRANCH})..."
     
     # Clone the kernel repository with specific branch
     git clone --branch "${KERNEL_BRANCH}" --depth 1 "${KERNEL_REPO}" "${TEMP_DIR}/linux"
     
     if [ $? -ne 0 ]; then
-        log_error "Failed to clone kernel source"
+        log_error "❌ Failed to clone kernel source"
         exit 1
     fi
     
     # Update kernel build directory path
     KERNEL_BUILD_DIR="${TEMP_DIR}/linux"
     
-    log_success "Kernel source cloned successfully"
+    # Verify the cloned repository
+    log_info "🔍 Verifying cloned repository..."
+    cd "${KERNEL_BUILD_DIR}"
+    git log --oneline -1
+    cd - > /dev/null
+    
+    log_success "✅ Kernel source cloned successfully"
+    log_info "📁 Kernel build directory: ${KERNEL_BUILD_DIR}"
 }
 
 # ----------------------------- 
 # Configure kernel
 # ----------------------------- 
 configure_kernel() {
-    log_info "Configuring kernel..."
+    log_info "⚙️ Configuring kernel..."
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Set up ccache environment
-    export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
-    export CC="ccache gcc"
-    export CXX="ccache g++"
-    export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    # Use environment variables from GitHub Actions workflow
+    # CCACHE configuration is already handled by the workflow
     
-    # Verify ccache is available
+    # Verify ccache is available and show status
     if command -v ccache >/dev/null 2>&1; then
-        log_info "Using ccache with cache directory: $CCACHE_DIR"
-        ccache -M 5G 2>/dev/null || true
-        ccache -s
+        log_info "🔧 Using ccache with cache directory: $CCACHE_DIR"
+        log_info "📊 ccache status before configuration:"
+        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
+    else
+        log_warning "⚠️ ccache not available, building without cache"
     fi
+    
+    log_info "🔧 Running kernel configuration..."
+    log_info "📋 Configuration commands: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
     
     # Use the exact command from user's requirements with ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
-        log_error "Kernel configuration failed"
+        log_error "❌ Kernel configuration failed"
         exit 1
     fi
     
-    log_success "Kernel configured successfully"
+    # Verify configuration files were created
+    log_info "🔍 Verifying configuration files..."
+    if [ -f ".config" ]; then
+        log_success "✅ Kernel configuration file created successfully"
+        log_info "📁 Configuration file size: $(du -h .config | cut -f1)"
+    else
+        log_error "❌ Kernel configuration file not found"
+        exit 1
+    fi
+    
+    log_success "✅ Kernel configured successfully"
     cd - > /dev/null
 }
 
@@ -255,27 +321,32 @@ configure_kernel() {
 # Build kernel
 # ----------------------------- 
 build_kernel() {
-    log_info "Building kernel..."
+    log_info "🔨 Building kernel..."
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Set up ccache environment
-    export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
-    export CC="ccache gcc"
-    export CXX="ccache g++"
-    export PATH="${CCACHE_DIR}/bin:${PATH}" 2>/dev/null || true
+    # Use environment variables from GitHub Actions workflow
+    # CCACHE configuration is already handled by the workflow
     
-    # Verify ccache is available
+    # Verify ccache is available and show status
     if command -v ccache >/dev/null 2>&1; then
-        log_info "Using ccache for kernel build"
-        log_info "ccache directory: $CCACHE_DIR"
+        log_info "🔧 Using ccache for kernel build"
+        log_info "📁 ccache directory: $CCACHE_DIR"
+        log_info "📊 ccache status before build:"
+        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
+    else
+        log_warning "⚠️ ccache not available, building without cache"
     fi
+    
+    log_info "🔨 Starting kernel compilation..."
+    log_info "📋 Build command: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
+    log_info "🖥️ Using $(nproc) CPU cores for compilation"
     
     # Use the exact command from user's requirements with ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
-        log_error "Kernel build failed"
+        log_error "❌ Kernel build failed"
         exit 1
     fi
     
@@ -283,13 +354,24 @@ build_kernel() {
     _kernel_version="$(make kernelrelease -s)"
     export _kernel_version
     
-    # Show ccache statistics
-    if command -v ccache >/dev/null 2>&1; then
-        log_info "ccache statistics:"
-        ccache -s
+    # Verify kernel image was created
+    log_info "🔍 Verifying kernel build output..."
+    if [ -f "arch/arm64/boot/Image.gz" ]; then
+        log_success "✅ Kernel image created successfully"
+        log_info "📁 Kernel image size: $(du -h arch/arm64/boot/Image.gz | cut -f1)"
+    else
+        log_error "❌ Kernel image not found"
+        exit 1
     fi
     
-    log_success "Kernel built successfully (version: $_kernel_version)"
+    # Show ccache statistics after build
+    if command -v ccache >/dev/null 2>&1; then
+        log_info "📊 ccache statistics after build:"
+        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache statistics"
+    fi
+    
+    log_success "✅ Kernel built successfully (version: $_kernel_version)"
+    log_info "📁 Build output: arch/arm64/boot/Image.gz"
     cd - > /dev/null
 }
 
@@ -305,25 +387,30 @@ build_kernel() {
 # Create kernel package
 # ----------------------------- 
 create_kernel_package() {
-    log_info "Creating kernel package..."
+    log_info "📦 Creating kernel package..."
     
     cd "${KERNEL_BUILD_DIR}"
     
     # Use the exact commands from user's requirements with correct paths
     local DEB_PACKAGE_DIR="${WORKING_DIR}/linux-xiaomi-raphael"
+    log_info "📁 Creating package directory: ${DEB_PACKAGE_DIR}"
     mkdir -p "${DEB_PACKAGE_DIR}/boot"
     
     # Copy kernel image and DTB
+    log_info "📄 Copying kernel image and DTB files..."
     cp arch/arm64/boot/Image.gz "${DEB_PACKAGE_DIR}/boot/vmlinuz-$_kernel_version"
     cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
+    log_success "✅ Kernel files copied to package directory"
     
     # Update control file version
+    log_info "📝 Updating control file version to ${_kernel_version}..."
     sed -i "s/Version:.*/Version: ${_kernel_version}/" "${DEB_PACKAGE_DIR}/DEBIAN/control"
     
     # Remove old lib directory if exists
     rm -rf "${DEB_PACKAGE_DIR}/lib" 2>/dev/null || true
     
     # Install modules
+    log_info "🔧 Installing kernel modules..."
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
     
     # Remove build symlinks
@@ -332,32 +419,37 @@ create_kernel_package() {
     # Build all packages
     cd "${WORKING_DIR}"
     
-    # Create output directory for standalone files
+    # Create output directory structure
+    log_info "📁 Creating output directory structure..."
     mkdir -p "${OUTPUT_DIR}/dtbs"
     
-    # Copy standalone kernel image and DTB files for GitHub Actions
-    # First, copy with the full kernel version for consistency
+    # Copy standalone kernel image and DTB files
+    log_info "📄 Copying standalone kernel files..."
     cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${_kernel_version}"
     cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" "${OUTPUT_DIR}/dtbs/"
     
-    # Also copy with the user-provided version for GitHub Actions compatibility
-    if [ -n "${KERNEL_VERSION}" ]; then
-        cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}"
+    # Create a symlink for GitHub Actions compatibility if versions differ
+    if [ "${KERNEL_VERSION}" != "${_kernel_version}" ] && [ -n "${KERNEL_VERSION}" ]; then
+        log_info "🔗 Creating version compatibility symlink..."
+        ln -sf "Image.gz-${_kernel_version}" "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}" 2>/dev/null || true
     fi
     
     # Build the kernel package
+    log_info "📦 Building kernel DEB package..."
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
     
     # Verify the output directory structure
-    log_info "Verifying output directory structure:"
+    log_info "🔍 Verifying output directory structure:"
     ls -la "${OUTPUT_DIR}/"
     ls -la "${OUTPUT_DIR}/dtbs/" 2>/dev/null || echo "DTB directory not found"
     
     # Build firmware and ALSA packages
+    log_info "📦 Building firmware and ALSA packages..."
     dpkg-deb --build --root-owner-group firmware-xiaomi-raphael
     dpkg-deb --build --root-owner-group alsa-xiaomi-raphael
     
     # Copy packages to output directory
+    log_info "📁 Moving packages to output directory..."
     mkdir -p "${OUTPUT_DIR}"
     mv linux-xiaomi-raphael.deb "${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}.deb"
     mv firmware-xiaomi-raphael.deb "${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}.deb"
@@ -366,75 +458,126 @@ create_kernel_package() {
     # Clean up the linux directory
     rm -rf linux
     
-    log_success "Kernel packages created successfully"
-    log_info "Kernel package: ${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}.deb"
-    log_info "Firmware package: ${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}.deb"
-    log_info "ALSA package: ${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}.deb"
+    # Verify package sizes
+    log_info "📊 Package sizes:"
+    for pkg in "${OUTPUT_DIR}"/*.deb; do
+        if [ -f "$pkg" ]; then
+            log_info "📦 $(basename $pkg): $(du -h "$pkg" | cut -f1)"
+        fi
+    done
+    
+    log_success "✅ Kernel packages created successfully"
+    log_info "📦 Kernel package: ${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}.deb"
+    log_info "📦 Firmware package: ${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}.deb"
+    log_info "📦 ALSA package: ${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}.deb"
+}
+
+# ----------------------------- 
+# Build status monitoring
+# ----------------------------- 
+BUILD_START_TIME=$(date +%s)
+BUILD_STEPS=("参数解析" "参数验证" "依赖检查" "源码克隆" "内核配置" "内核编译" "包创建")
+BUILD_STEP_COUNT=${#BUILD_STEPS[@]}
+CURRENT_STEP=0
+
+report_build_status() {
+    local step_name="$1"
+    local status="$2"
+    local message="$3"
+    
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    local progress=$((CURRENT_STEP * 100 / BUILD_STEP_COUNT))
+    local elapsed_time=$(( $(date +%s) - BUILD_START_TIME ))
+    
+    case $status in
+        "start")
+            log_info "🚀 [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 开始: $step_name"
+            ;;
+        "success") 
+            log_success "✅ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 完成: $step_name (耗时: ${elapsed_time}s)"
+            ;;
+        "warning")
+            log_warning "⚠️ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 警告: $step_name - $message"
+            ;;
+        "error")
+            log_error "❌ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 错误: $step_name - $message"
+            ;;
+    esac
 }
 
 # ----------------------------- 
 # Main function
 # ----------------------------- 
 main() {
-    # Set up ccache if enabled
-    if [ "$CACHE_ENABLED" = "true" ]; then
-        log_info "Configuring ccache..."
-        
-        # Create ccache directory if it doesn't exist
-        mkdir -p "${CCACHE_DIR}"
-        
-        # Set ccache configuration directly using ccache commands
-        if command -v ccache >/dev/null 2>&1; then
-            ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
-            ccache -o compiler_check=content
-            ccache -o compress=true
-            ccache -o sloppiness=file_macro,locale,time_stamp
-        fi
-        
-        # Set up ccache symlinks for cross-compilers
-        mkdir -p "${CCACHE_DIR}/bin"
-        for c in aarch64-linux-gnu-gcc aarch64-linux-gnu-g++; do
-            ln -sf "$(which ccache)" "${CCACHE_DIR}/bin/$c" 2>/dev/null || true
-        done
-        
-        # Make ccache directory writable
-        sudo chmod -R 777 "${CCACHE_DIR}" 2>/dev/null || true
-        
-        # Show ccache status
-        if command -v ccache >/dev/null 2>&1; then
-            ccache -s
-        fi
-        
-        log_success "ccache configured successfully"
+    log_info "🚀 Starting kernel build process..."
+    log_info "📊 Build configuration:"
+    log_info "   - Target: Xiaomi K20 Pro (Raphael)"
+    log_info "   - Architecture: ARM64"
+    log_info "   - Build started at: $(date)"
+    
+    # Show initial ccache status if cache is enabled
+    if [ "$CACHE_ENABLED" = "true" ] && command -v ccache >/dev/null 2>&1; then
+        log_info "Cache enabled, checking ccache status..."
+        log_info "ccache directory: $CCACHE_DIR"
+        log_info "Initial ccache status:"
+        ccache -s 2>/dev/null || log_warning "Could not get initial ccache status"
+    elif [ "$CACHE_ENABLED" = "false" ]; then
+        log_info "Cache disabled, building without ccache"
     else
-        log_info "Cache disabled, skipping ccache configuration"
+        log_warning "ccache not available, building without cache"
     fi
     
-    log_info "Starting kernel build for Xiaomi K20 Pro (Raphael)"
-    
-    # Step 1: Parse command-line arguments
+    # Parse command-line arguments
+    report_build_status "${BUILD_STEPS[0]}" "start"
     parse_arguments "$@"
+    report_build_status "${BUILD_STEPS[0]}" "success"
     
-    # Step 2: Validate parameters
+    # Validate parameters
+    report_build_status "${BUILD_STEPS[1]}" "start"
     validate_parameters
+    report_build_status "${BUILD_STEPS[1]}" "success"
     
-    # Step 3: Check and install dependencies
+    # Check dependencies
+    report_build_status "${BUILD_STEPS[2]}" "start"
     check_dependencies
+    report_build_status "${BUILD_STEPS[2]}" "success"
     
-    # Step 4: Clone kernel source code
+    # Clone kernel source
+    report_build_status "${BUILD_STEPS[3]}" "start"
     clone_kernel_source
+    report_build_status "${BUILD_STEPS[3]}" "success"
     
-    # Step 5: Configure kernel
+    # Configure kernel
+    report_build_status "${BUILD_STEPS[4]}" "start"
     configure_kernel
+    report_build_status "${BUILD_STEPS[4]}" "success"
     
-    # Step 6: Build kernel (includes kernel release version detection)
+    # Build kernel
+    report_build_status "${BUILD_STEPS[5]}" "start"
     build_kernel
+    report_build_status "${BUILD_STEPS[5]}" "success"
     
-    # Step 7: Create kernel package
+    # Create kernel package
+    report_build_status "${BUILD_STEPS[6]}" "start"
     create_kernel_package
+    report_build_status "${BUILD_STEPS[6]}" "success"
     
-    log_success "Kernel build completed successfully!"
-    log_info "Build output is located in: $OUTPUT_DIR"
+    # Final build summary
+    local total_time=$(( $(date +%s) - BUILD_START_TIME ))
+    log_success "🎉 内核构建完成！"
+    log_info "📊 构建统计:"
+    log_info "   - 总耗时: ${total_time} 秒"
+    log_info "   - 输出目录: ${OUTPUT_DIR}"
+    log_info "   - 生成的文件:"
+    ls -la "${OUTPUT_DIR}/"
+    
+    # Show final package information
+    log_info "📦 生成的包:"
+    for pkg in "${OUTPUT_DIR}"/*.deb; do
+        if [ -f "$pkg" ]; then
+            log_info "   - $(basename $pkg) ($(du -h "$pkg" | cut -f1))"
+        fi
+    done
 }
 
 # ----------------------------- 
