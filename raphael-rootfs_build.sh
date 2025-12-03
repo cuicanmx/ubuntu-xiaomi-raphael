@@ -67,14 +67,19 @@ main() {
     
     # Step 6: Install QEMU for emulation (if not on ARM64)
     if [ "$(uname -m)" != "aarch64" ]; then
-        log_info "Installing QEMU for ARM64 emulation..."
+        log_info "Running on $(uname -m), installing QEMU for ARM64 emulation..."
         wget "https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-aarch64-static"
         install -m755 qemu-aarch64-static "$ROOTDIR/"
         
         echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
         echo ':aarch64ld:M::\x7fELF\x02\x01\x01\x03\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
     else
-        log_info "Running on ARM64, skipping QEMU installation"
+        log_info "Running on ARM64, using native execution - no QEMU needed"
+        # 在ARM64上，确保binfmt支持已启用
+        if [ ! -f /proc/sys/fs/binfmt_misc/aarch64 ]; then
+            log_info "Enabling binfmt support for ARM64 native execution"
+            echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff::' | tee /proc/sys/fs/binfmt_misc/register
+        fi
     fi
     
     # Step 7: Configure environment variables for chroot
