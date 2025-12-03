@@ -315,6 +315,13 @@ create_kernel_package() {
     # Build all packages
     cd "${WORKING_DIR}"
     
+    # Create output directory for standalone files
+    mkdir -p "${OUTPUT_DIR}/dtbs"
+    
+    # Copy standalone kernel image and DTB files for GitHub Actions
+    cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${_kernel_version}"
+    cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" "${OUTPUT_DIR}/dtbs/"
+    
     # Build the kernel package
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
     
