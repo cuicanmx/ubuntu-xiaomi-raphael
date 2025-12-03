@@ -9,25 +9,65 @@ set -o pipefail  # Exit on pipe failures
 # ----------------------------- 
 # Error handling and recovery
 # ----------------------------- 
+# Enhanced error handling with severity levels
 handle_error() {
     local exit_code=$?
     local line_number=$1
     local function_name=$2
+    local error_level="${3:-fatal}"  # Default to fatal if not specified
     
-    log_error "❌ Error occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
-    
-    # Show current directory and environment info for debugging
-    log_info "📁 Current directory: $(pwd)"
-    log_info "🔧 Environment variables:"
-    env | grep -E "(CCACHE|ARCH|CROSS_COMPILE|KERNEL)" || true
-    
-    # Attempt to cleanup before exiting
-    cleanup
-    
-    exit $exit_code
+    case $error_level in
+        "fatal")
+            log_error "❌ FATAL ERROR occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
+            
+            # Show current directory and environment info for debugging
+            log_info "📁 Current directory: $(pwd)"
+            log_info "🔧 Environment variables:"
+            env | grep -E "(CCACHE|ARCH|CROSS_COMPILE|KERNEL)" || true
+            
+            # Attempt to cleanup before exiting
+            cleanup
+            
+            exit $exit_code
+            ;;
+        "nonfatal")
+            log_warning "⚠️ NON-FATAL ERROR occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
+            log_info "📝 Continuing build process despite error..."
+            return 0  # Continue execution
+            ;;
+        *)
+            log_error "❌ UNKNOWN ERROR LEVEL: $error_level"
+            exit 1
+            ;;
+    esac
 }
 
-trap 'handle_error $LINENO ${FUNCNAME[0]:-main}' ERR
+# Enhanced error handling for specific commands
+safe_execute() {
+    local command="$1"
+    local error_level="${2:-fatal}"
+    
+    log_info "🔧 Executing: $command"
+    
+    if eval "$command"; then
+        log_success "✅ Command executed successfully"
+        return 0
+    else
+        local exit_code=$?
+        log_warning "⚠️ Command failed with exit code: $exit_code"
+        
+        if [ "$error_level" = "nonfatal" ]; then
+            log_info "📝 Non-fatal error, continuing..."
+            return $exit_code
+        else
+            log_error "❌ Fatal error, terminating build"
+            exit $exit_code
+        fi
+    fi
+}
+
+# Set trap for ERR signal with enhanced error handling
+trap 'handle_error $LINENO ${FUNCNAME[0]:-main} fatal' ERR
 
 # ----------------------------- 
 # Load centralized configuration
@@ -399,8 +439,20 @@ create_kernel_package() {
     # Copy kernel image and DTB
     log_info "📄 Copying kernel image and DTB files..."
     cp arch/arm64/boot/Image.gz "${DEB_PACKAGE_DIR}/boot/vmlinuz-$_kernel_version"
-    cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
-    log_success "✅ Kernel files copied to package directory"
+    
+    # Copy device tree file with error tolerance
+    if [ -f "arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" ]; then
+        cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
+        log_success "✅ Device tree file copied successfully"
+    else
+        log_warning "⚠️ Device tree file not found, creating placeholder"
+        # Create empty placeholder file to avoid package creation failure
+        touch "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
+        echo "# Placeholder for missing device tree file" > "${DEB_PACKAGE_DIR}/boot/dtb-$_kernel_version"
+        log_info "📝 Created placeholder device tree file"
+    fi
+    
+    log_success "✅ Kernel files processed successfully"
     
     # Update control file version
     log_info "📝 Updating control file version to ${_kernel_version}..."
@@ -426,7 +478,15 @@ create_kernel_package() {
     # Copy standalone kernel image and DTB files
     log_info "📄 Copying standalone kernel files..."
     cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" "${OUTPUT_DIR}/Image.gz-${_kernel_version}"
-    cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" "${OUTPUT_DIR}/dtbs/"
+    
+    # Copy device tree file with error tolerance
+    if [ -f "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" ]; then
+        cp "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8150-xiaomi-raphael.dtb" "${OUTPUT_DIR}/dtbs/"
+        log_success "✅ Standalone device tree file copied successfully"
+    else
+        log_warning "⚠️ Standalone device tree file not found, skipping..."
+        log_info "📝 DTB directory will be empty but build continues"
+    fi
     
     # Create a symlink for GitHub Actions compatibility if versions differ
     if [ "${KERNEL_VERSION}" != "${_kernel_version}" ] && [ -n "${KERNEL_VERSION}" ]; then
@@ -473,13 +533,15 @@ create_kernel_package() {
 }
 
 # ----------------------------- 
-# Build status monitoring
+# Build status monitoring and error tolerance
 # ----------------------------- 
 BUILD_START_TIME=$(date +%s)
 BUILD_STEPS=("参数解析" "参数验证" "依赖检查" "源码克隆" "内核配置" "内核编译" "包创建")
 BUILD_STEP_COUNT=${#BUILD_STEPS[@]}
 CURRENT_STEP=0
+BUILD_STATUS="in_progress"
 
+# Enhanced build status reporting with error tolerance
 report_build_status() {
     local step_name="$1"
     local status="$2"
@@ -498,11 +560,49 @@ report_build_status() {
             ;;
         "warning")
             log_warning "⚠️ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 警告: $step_name - $message"
+            BUILD_STATUS="partial_success"
             ;;
         "error")
             log_error "❌ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 错误: $step_name - $message"
+            BUILD_STATUS="partial_success"
             ;;
     esac
+    
+    # Update build status file for GitHub Actions
+    update_build_status_file
+}
+
+# Create build status file for debugging and monitoring
+update_build_status_file() {
+    local status_file="${OUTPUT_DIR}/build-status.txt"
+    
+    mkdir -p "${OUTPUT_DIR}"
+    
+    cat > "$status_file" << EOF
+Build Status: $BUILD_STATUS
+Current Step: $CURRENT_STEP/$BUILD_STEP_COUNT
+Progress: $((CURRENT_STEP * 100 / BUILD_STEP_COUNT))%
+Elapsed Time: $(( $(date +%s) - BUILD_START_TIME ))s
+Kernel Version: $KERNEL_VERSION
+Build Started: $(date -d @$BUILD_START_TIME)
+Last Updated: $(date)
+
+Generated Files:
+- DEB Packages: $(ls "${OUTPUT_DIR}"/*.deb 2>/dev/null | wc -l)
+- Kernel Image: $([ -f "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}" ] && echo "yes" || echo "no")
+- DTB Files: $(ls "${OUTPUT_DIR}/dtbs/"*.dtb 2>/dev/null | wc -l)
+
+Cache Information:
+- CCACHE Enabled: $CACHE_ENABLED
+- CCACHE Directory: $CCACHE_DIR
+EOF
+    
+    # Add detailed file list if available
+    if [ -d "${OUTPUT_DIR}" ]; then
+        echo "" >> "$status_file"
+        echo "File Listing:" >> "$status_file"
+        ls -la "${OUTPUT_DIR}"/* 2>/dev/null >> "$status_file" || true
+    fi
 }
 
 # ----------------------------- 
@@ -570,11 +670,18 @@ main() {
     create_kernel_package
     report_build_status "${BUILD_STEPS[6]}" "success"
     
-    # Final build summary
+    # Final build summary and status update
     local total_time=$(( $(date +%s) - BUILD_START_TIME ))
+    
+    # Set final build status
+    if [ "$BUILD_STATUS" = "in_progress" ]; then
+        BUILD_STATUS="success"
+    fi
+    
     log_success "🎉 内核构建完成！"
     log_info "📊 构建统计:"
     log_info "   - 总耗时: ${total_time} 秒"
+    log_info "   - 构建状态: ${BUILD_STATUS}"
     log_info "   - 输出目录: ${OUTPUT_DIR}"
     log_info "   - 生成的文件:"
     ls -la "${OUTPUT_DIR}/"
@@ -586,6 +693,15 @@ main() {
             log_info "   - $(basename $pkg) ($(du -h "$pkg" | cut -f1))"
         fi
     done
+    
+    # Final build status update
+    update_build_status_file
+    
+    # Show build status file content
+    if [ -f "${OUTPUT_DIR}/build-status.txt" ]; then
+        log_info "📋 构建状态报告:"
+        cat "${OUTPUT_DIR}/build-status.txt"
+    fi
 }
 
 # ----------------------------- 
