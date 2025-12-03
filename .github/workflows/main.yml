@@ -93,12 +93,45 @@ jobs:
       run: |
         echo "📥 Downloading kernel packages from GitHub Release: $RELEASE_TAG"
         
-        # Download kernel packages from release
+        # First try to download compressed kernel archive (new format)
+        echo "🔍 Looking for compressed kernel archive..."
         gh release download $RELEASE_TAG \
-          --pattern "linux-xiaomi-raphael_*.deb" \
-          --pattern "firmware-xiaomi-raphael_*.deb" \
-          --pattern "alsa-xiaomi-raphael_*.deb" \
-          --repo ${{ github.repository }}
+          --pattern "kernel-${KERNEL_VERSION}-raphael.tar.gz" \
+          --pattern "kernel-${KERNEL_VERSION}-raphael.zip" \
+          --repo ${{ github.repository }} || echo "⚠️ Compressed archive not found, trying individual packages"
+        
+        # If compressed archive found, extract it
+        if [ -f "kernel-${KERNEL_VERSION}-raphael.tar.gz" ]; then
+          echo "📦 Extracting compressed kernel archive..."
+          tar -xzf "kernel-${KERNEL_VERSION}-raphael.tar.gz"
+          
+          # Move packages from archive subdirectory
+          if [ -d "packages" ]; then
+            mv packages/*.deb . 2>/dev/null || true
+            rm -rf packages
+          fi
+          
+          echo "✅ Compressed archive extracted successfully"
+        elif [ -f "kernel-${KERNEL_VERSION}-raphael.zip" ]; then
+          echo "📦 Extracting compressed kernel archive..."
+          unzip -q "kernel-${KERNEL_VERSION}-raphael.zip"
+          
+          # Move packages from archive subdirectory
+          if [ -d "packages" ]; then
+            mv packages/*.deb . 2>/dev/null || true
+            rm -rf packages
+          fi
+          
+          echo "✅ Compressed archive extracted successfully"
+        else
+          # Fallback to individual package download (old format)
+          echo "📦 Downloading individual kernel packages..."
+          gh release download $RELEASE_TAG \
+            --pattern "linux-xiaomi-raphael_*.deb" \
+            --pattern "firmware-xiaomi-raphael_*.deb" \
+            --pattern "alsa-xiaomi-raphael_*.deb" \
+            --repo ${{ github.repository }}
+        fi
         
         # Verify downloaded packages
         echo "🔍 Verifying downloaded kernel packages:"

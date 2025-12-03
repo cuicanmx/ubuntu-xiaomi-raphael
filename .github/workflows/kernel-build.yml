@@ -89,29 +89,36 @@ jobs:
             
       - name: Configure ccache
         run: |
-          echo "🔧 Configuring ccache..."
+          echo "🔧 Configuring ccache using example.yml best practices..."
           mkdir -p ${{ env.CCACHE_DIR }}
           
-          # Set ccache configuration using environment variables
-          ccache -M ${{ env.CCACHE_MAXSIZE }} 2>/dev/null || echo "⚠️ Could not set cache size"
-          ccache -o compiler_check=${{ env.CCACHE_COMPILERCHECK }} 2>/dev/null || echo "⚠️ Could not set compiler_check"
-          ccache -o compress=${{ env.CCACHE_COMPRESS }} 2>/dev/null || echo "⚠️ Could not set compress"
-          ccache -o sloppiness=${{ env.CCACHE_SLOPPINESS }} 2>/dev/null || echo "⚠️ Could not set sloppiness"
+          # Create ccache configuration file (more reliable than command-line options)
+          echo "max_size = ${{ env.CCACHE_MAXSIZE }}" > ${{ env.CCACHE_DIR }}/ccache.conf
+          echo "compiler_check = ${{ env.CCACHE_COMPILERCHECK }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
+          echo "compression = ${{ env.CCACHE_COMPRESS }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
+          echo "sloppiness = ${{ env.CCACHE_SLOPPINESS }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
           
           # Create cross-compiler symlinks for ccache
           mkdir -p ${{ env.CCACHE_DIR }}/bin
           for c in aarch64-linux-gnu-gcc aarch64-linux-gnu-g++; do
-            ln -sf $(which ccache) ${{ env.CCACHE_DIR }}/bin/$c 2>/dev/null || echo "⚠️ Could not create symlink for $c"
+            ln -sf $(which ccache) ${{ env.CCACHE_DIR }}/bin/$c
           done
           
+          # Update PATH to prioritize ccache wrapper
+          echo "PATH=${{ env.CCACHE_DIR }}/bin:$PATH" >> $GITHUB_ENV
+          
           # Ensure proper permissions
-          sudo chmod -R 777 ${{ env.CCACHE_DIR }} 2>/dev/null || echo "⚠️ Could not set permissions"
+          chmod -R 777 ${{ env.CCACHE_DIR }}
           
           # Show ccache configuration
           echo "📊 Current ccache configuration:"
-          ccache --show-config 2>/dev/null | grep -E "(compiler_check|compress|sloppiness|max_size)" || echo "⚠️ Could not show configuration"
+          ccache --show-config
           
-          echo "✅ ccache configuration completed"
+          # Test ccache functionality
+          echo "🧪 Testing ccache functionality..."
+          ccache -s
+          
+          echo "✅ ccache configuration completed using best practices"
             
       - name: Build kernel packages
         run: |
@@ -202,6 +209,7 @@ jobs:
             - **Kernel Packages**: DEB packages for installation
             - **Kernel Image**: Raw kernel binary (Image.gz)
             - **DTB Files**: Device Tree Blobs for hardware configuration
+            - **Compressed Archives**: Complete kernel build in tar.gz and zip formats
             
             ## Usage
             
@@ -210,16 +218,27 @@ jobs:
             sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
             ```
             
+            ### Using Compressed Archives:
+            Extract the compressed archive to get all kernel files in one place:
+            ```bash
+            tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
+            # or
+            unzip kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
+            ```
+            
             ### For Boot Image Creation:
             Use the `Image.gz` file and corresponding DTB files with your boot image builder.
             
             ## Changelog
             - Kernel version update to ${{ github.event.inputs.kernel_version }}
+            - Added compressed archive support for easier distribution
             - Bug fixes and performance improvements
           files: |
             output/kernel/*.deb
             output/kernel/Image.gz-*
             output/kernel/dtbs/*
+            output/kernel/kernel-*.tar.gz
+            output/kernel/kernel-*.zip
           draft: false
           prerelease: false
           
@@ -239,4 +258,6 @@ jobs:
             output/kernel/*.deb
             output/kernel/Image.gz-*
             output/kernel/dtbs/*
+            output/kernel/kernel-*.tar.gz
+            output/kernel/kernel-*.zip
           retention-days: 30

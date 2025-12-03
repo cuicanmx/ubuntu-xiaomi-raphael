@@ -432,6 +432,94 @@ build_kernel() {
 
 
 # ----------------------------- 
+# Create compressed archive
+# ----------------------------- 
+create_compressed_archive() {
+    log_info "📦 Creating compressed archive of build artifacts..."
+    
+    local archive_name="kernel-${_kernel_version}-raphael"
+    local archive_path="${OUTPUT_DIR}/${archive_name}"
+    
+    # Create a temporary directory for packaging
+    local temp_dir=$(mktemp -d)
+    
+    # Copy all build artifacts to temporary directory
+    log_info "📄 Copying build artifacts to temporary directory..."
+    
+    # Copy DEB packages
+    mkdir -p "${temp_dir}/packages"
+    cp "${OUTPUT_DIR}"/*.deb "${temp_dir}/packages/" 2>/dev/null || log_warning "⚠️ No DEB packages found"
+    
+    # Copy kernel image
+    mkdir -p "${temp_dir}/kernel"
+    if [ -f "${OUTPUT_DIR}/Image.gz-${_kernel_version}" ]; then
+        cp "${OUTPUT_DIR}/Image.gz-${_kernel_version}" "${temp_dir}/kernel/"
+        log_success "✅ Kernel image copied"
+    fi
+    
+    # Copy DTB files
+    if [ -d "${OUTPUT_DIR}/dtbs" ] && [ "$(ls -A ${OUTPUT_DIR}/dtbs/ 2>/dev/null)" ]; then
+        mkdir -p "${temp_dir}/dtbs"
+        cp "${OUTPUT_DIR}/dtbs/"* "${temp_dir}/dtbs/" 2>/dev/null || log_warning "⚠️ No DTB files found"
+    fi
+    
+    # Copy build status file
+    if [ -f "${OUTPUT_DIR}/build-status.txt" ]; then
+        cp "${OUTPUT_DIR}/build-status.txt" "${temp_dir}/"
+    fi
+    
+    # Create README file with build information
+    cat > "${temp_dir}/README.md" << EOF
+# Kernel $KERNEL_VERSION for Xiaomi Raphael (K20 Pro)
+
+## Build Information
+- Kernel Version: $KERNEL_VERSION
+- Architecture: ARM64
+- Target Device: Xiaomi Raphael (K20 Pro)
+- Build Date: $(date)
+- Build Time: $(( $(date +%s) - BUILD_START_TIME )) seconds
+
+## Contents
+- **packages/**: DEB packages for kernel, firmware, and ALSA
+- **kernel/**: Standalone kernel image
+- **dtbs/**: Device tree binary files
+- **build-status.txt**: Detailed build status report
+
+## Installation
+1. Install DEB packages: \`sudo dpkg -i packages/*.deb\`
+2. Update bootloader with kernel image if needed
+3. Reboot to apply changes
+
+## Cache Information
+- CCACHE Enabled: $CACHE_ENABLED
+- CCACHE Directory: $CCACHE_DIR
+EOF
+    
+    # Create compressed archive (tar.gz for maximum compatibility)
+    log_info "📦 Creating tar.gz archive..."
+    cd "${temp_dir}"
+    tar -czf "${archive_path}.tar.gz" .
+    
+    # Also create a zip archive for broader compatibility
+    log_info "📦 Creating zip archive..."
+    zip -r "${archive_path}.zip" . > /dev/null
+    
+    # Clean up temporary directory
+    cd - > /dev/null
+    rm -rf "${temp_dir}"
+    
+    # Verify archive creation
+    if [ -f "${archive_path}.tar.gz" ] && [ -f "${archive_path}.zip" ]; then
+        log_success "✅ Compressed archives created successfully"
+        log_info "📦 Archive sizes:"
+        log_info "   - ${archive_name}.tar.gz: $(du -h "${archive_path}.tar.gz" | cut -f1)"
+        log_info "   - ${archive_name}.zip: $(du -h "${archive_path}.zip" | cut -f1)"
+    else
+        log_error "❌ Failed to create compressed archives"
+    fi
+}
+
+# ----------------------------- 
 # Create kernel package
 # ----------------------------- 
 create_kernel_package() {
@@ -544,7 +632,7 @@ create_kernel_package() {
 # Build status monitoring and error tolerance
 # ----------------------------- 
 BUILD_START_TIME=$(date +%s)
-BUILD_STEPS=("参数解析" "参数验证" "依赖检查" "源码克隆" "内核配置" "内核编译" "包创建")
+BUILD_STEPS=("参数解析" "参数验证" "依赖检查" "源码克隆" "内核配置" "内核编译" "包创建" "创建压缩包")
 BUILD_STEP_COUNT=${#BUILD_STEPS[@]}
 CURRENT_STEP=0
 BUILD_STATUS="in_progress"
@@ -701,6 +789,11 @@ main() {
             log_info "   - $(basename $pkg) ($(du -h "$pkg" | cut -f1))"
         fi
     done
+    
+    # Create compressed archive of all build artifacts
+    report_build_status "创建压缩包" "start"
+    create_compressed_archive
+    report_build_status "创建压缩包" "success"
     
     # Final build status update
     update_build_status_file
