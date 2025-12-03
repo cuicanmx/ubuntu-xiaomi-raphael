@@ -83,7 +83,7 @@ CCACHE_MAXSIZE="5G"                  # ccache最大大小
 # 支持的发行版
 # ----------------------------- 
 SUPPORTED_DISTRIBUTIONS=("ubuntu" "armbian")
-SUPPORTED_UBUNTU_VERSIONS=("22.04" "24.04")
+SUPPORTED_UBUNTU_VERSIONS=("22.04" "24.04" "24.04.3" "noble")
 
 # ----------------------------- 
 # 依赖检查函数
