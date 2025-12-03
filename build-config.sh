@@ -1,95 +1,95 @@
 #!/bin/bash
 
 # ----------------------------- 
-# Build Configuration for Xiaomi K20 Pro (Raphael) Ubuntu Project
+# 小米K20 Pro (Raphael) Ubuntu项目的构建配置
 # ----------------------------- 
-# This file contains all centralized configuration parameters for the build system.
-# All build scripts should source this file before execution.
+# 此文件包含构建系统的所有集中式配置参数。
+# 所有构建脚本在执行前都应引用此文件。
 
 # ----------------------------- 
-# System Configuration
+# 系统配置
 # ----------------------------- 
-SYSTEM_ARCH="arm64"            # Target architecture
-ROOTFS_SIZE="6G"              # Root filesystem size
-SWAP_SIZE="2G"                # Swap partition size
-BOOT_IMAGE_SIZE="64M"         # Boot image size
-BUILD_THREADS=$(nproc)         # Number of build threads (auto-detected)
+SYSTEM_ARCH="arm64"            # 目标架构
+ROOTFS_SIZE="6G"              # 根文件系统大小
+SWAP_SIZE="2G"                # 交换分区大小
+BOOT_IMAGE_SIZE="64M"         # 启动镜像大小
+BUILD_THREADS=$(nproc)         # 构建线程数（自动检测）
 
 # ----------------------------- 
-# Kernel Configuration
+# 内核配置
 # ----------------------------- 
-KERNEL_REPO="https://github.com/GengWei1997/linux.git"       # Kernel source repository
-KERNEL_BRANCH_PREFIX="raphael-"                             # Branch prefix in kernel repo
-KERNEL_VERSION_DEFAULT="6.18"                               # Default kernel version
-RELEASE_TAG_DEFAULT="v6.18"                                 # Default release tag
-CROSS_COMPILE="aarch64-linux-gnu-"                          # Cross-compiler prefix
-KERNEL_CONFIG="sm8150.config"                                # Kernel configuration file
+KERNEL_REPO="https://github.com/GengWei1997/linux.git"       # 内核源码仓库
+KERNEL_BRANCH_PREFIX="raphael-"                             # 内核仓库中的分支前缀
+KERNEL_VERSION_DEFAULT="6.18"                               # 默认内核版本
+RELEASE_TAG_DEFAULT="v6.18"                                 # 默认发布标签
+CROSS_COMPILE="aarch64-linux-gnu-"                          # 交叉编译器前缀
+KERNEL_CONFIG="sm8150.config"                                # 内核配置文件
 
 # ----------------------------- 
-# Boot Image Configuration
+# 启动镜像配置
 # ----------------------------- 
-BOOT_SOURCE_DEFAULT="https://example.com/xiaomi-k20pro-boot.img"  # Default boot image source
-BOOT_OUTPUT_DEFAULT="xiaomi-k20pro-boot-%s-%s.img"                # Output boot image format
+BOOT_SOURCE_DEFAULT="https://example.com/xiaomi-k20pro-boot.img"  # 默认启动镜像源
+BOOT_OUTPUT_DEFAULT="xiaomi-k20pro-boot-%s-%s.img"                # 输出启动镜像格式
 
 # ----------------------------- 
-# Version Manager Configuration
+# 版本管理器配置
 # ----------------------------- 
-GITHUB_REPO="GengWei1997/ubuntu-xiaomi-raphael"    # GitHub repository
-KERNEL_WORKFLOW="kernel-build.yml"                 # Kernel build workflow
-ROOTFS_WORKFLOW="main.yml"                          # Rootfs build workflow
+GITHUB_REPO="GengWei1997/ubuntu-xiaomi-raphael"    # GitHub仓库
+KERNEL_WORKFLOW="kernel-build.yml"                 # 内核构建工作流
+ROOTFS_WORKFLOW="main.yml"                          # 根文件系统构建工作流
 
 # ----------------------------- 
-# Ubuntu Configuration
+# Ubuntu配置
 # ----------------------------- 
-UBUNTU_VERSION="24.04.3"                  # Ubuntu version
-UBUNTU_CODENAME="noble"                   # Ubuntu codename
-UBUNTU_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports"  # Ubuntu mirror
-UBUNTU_DOWNLOAD_BASE="https://cdimage.ubuntu.com/ubuntu-base/releases"  # Ubuntu base download URL
-UBUNTU_IMAGE_TYPE="ubuntu-base"           # Ubuntu image type
-UBUNTU_ARCH="arm64"                       # Ubuntu architecture
+UBUNTU_VERSION="24.04.3"                  # Ubuntu版本
+UBUNTU_CODENAME="noble"                   # Ubuntu代号
+UBUNTU_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports"  # Ubuntu镜像源
+UBUNTU_DOWNLOAD_BASE="https://cdimage.ubuntu.com/ubuntu-base/releases"  # Ubuntu基础下载地址
+UBUNTU_IMAGE_TYPE="ubuntu-base"           # Ubuntu镜像类型
+UBUNTU_ARCH="arm64"                       # Ubuntu架构
 
 # ----------------------------- 
-# QEMU Configuration
+# QEMU配置
 # ----------------------------- 
-QEMU_SYSTEM="qemu-system-aarch64"        # QEMU system emulator
-QEMU_MACHINE="virt"                      # QEMU machine type
-QEMU_CPU="cortex-a72"                    # QEMU CPU type
-QEMU_MEMORY="4G"                         # QEMU memory allocation
-QEMU_DISK="ubuntu-arm64.img"             # QEMU disk image
-QEMU_NET="user,hostfwd=tcp::2222-:22"    # QEMU network configuration
+QEMU_SYSTEM="qemu-system-aarch64"        # QEMU系统模拟器
+QEMU_MACHINE="virt"                      # QEMU机器类型
+QEMU_CPU="cortex-a72"                    # QEMU CPU类型
+QEMU_MEMORY="4G"                         # QEMU内存分配
+QEMU_DISK="ubuntu-arm64.img"             # QEMU磁盘镜像
+QEMU_NET="user,hostfwd=tcp::2222-:22"    # QEMU网络配置
 
 # ----------------------------- 
-# Package Configuration
+# 包配置
 # ----------------------------- 
 KERNEL_PACKAGE_NAME="linux-image-raphael"
 KERNEL_PACKAGE_VERSION="${KERNEL_VERSION_DEFAULT}-1"
 KERNEL_PACKAGE_ARCH="arm64"
 
 # ----------------------------- 
-# Directory Configuration
+# 目录配置
 # ----------------------------- 
-WORKING_DIR="$(pwd)"                 # Current working directory
-TEMP_DIR="${WORKING_DIR}/temp"      # Temporary directory
-OUTPUT_DIR="${WORKING_DIR}/output"   # Output directory
+WORKING_DIR="$(pwd)"                 # 当前工作目录
+TEMP_DIR="${WORKING_DIR}/temp"      # 临时目录
+OUTPUT_DIR="${WORKING_DIR}/output"   # 输出目录
 
 # ----------------------------- 
-# Cache Configuration
+# 缓存配置
 # ----------------------------- 
-CACHE_ENABLED_DEFAULT=true           # Default enable build cache
-CCACHE_DIR="${GITHUB_WORKSPACE:-$HOME}/.ccache"  # ccache directory (use GitHub workspace if available)
-CCACHE_MAXSIZE="5G"                  # ccache maximum size
+CACHE_ENABLED_DEFAULT=true           # 默认启用构建缓存
+CCACHE_DIR="${GITHUB_WORKSPACE:-$HOME}/.ccache"  # ccache目录（如果可用则使用GitHub工作空间）
+CCACHE_MAXSIZE="5G"                  # ccache最大大小
 
 # ----------------------------- 
-# Supported Distributions
+# 支持的发行版
 # ----------------------------- 
 SUPPORTED_DISTRIBUTIONS=("ubuntu" "armbian")
 SUPPORTED_UBUNTU_VERSIONS=("22.04" "24.04")
 
 # ----------------------------- 
-# Dependency Check Functions
+# 依赖检查函数
 # ----------------------------- 
 
-# Check if a command is available
+# 检查命令是否可用
 is_command_available() {
     local command="$1"
     local description="$2"
@@ -97,104 +97,104 @@ is_command_available() {
     if command -v "$command" &>/dev/null; then
         return 0
     else
-        echo "❌ Error: $description ($command) is not installed!"
+        echo "❌ 错误: $description ($command) 未安装!"
         return 1
     fi
 }
 
-# Check if all required dependencies are installed for kernel build
+# 检查内核构建所需的所有依赖是否已安装
 dependency_check_kernel_build() {
     local errors=0
     
-    echo "🔍 Checking dependencies for kernel build..."
+    echo "🔍 检查内核构建依赖..."
     
-    # Check essential build tools
-    is_command_available "git" "Git version control" || ((errors++))
+    # 检查基本构建工具
+    is_command_available "git" "Git版本控制" || ((errors++))
     is_command_available "make" "GNU Make" || ((errors++))
-    is_command_available "gcc" "GCC compiler" || ((errors++))
-    is_command_available "bc" "Basic calculator" || ((errors++))
-    is_command_available "bison" "Bison parser generator" || ((errors++))
-    is_command_available "flex" "Flex lexical analyzer" || ((errors++))
-    is_command_available "dtc" "Device Tree Compiler" || ((errors++))
-    is_command_available "mkimage" "U-Boot image creator" || ((errors++))
-    is_command_available "dpkg-deb" "Debian package builder" || ((errors++))
+    is_command_available "gcc" "GCC编译器" || ((errors++))
+    is_command_available "bc" "基础计算器" || ((errors++))
+    is_command_available "bison" "Bison解析器生成器" || ((errors++))
+    is_command_available "flex" "Flex词法分析器" || ((errors++))
+    is_command_available "dtc" "设备树编译器" || ((errors++))
+    is_command_available "mkimage" "U-Boot镜像创建器" || ((errors++))
+    is_command_available "dpkg-deb" "Debian包构建器" || ((errors++))
     
-    # Check cross-compiler
-    is_command_available "${CROSS_COMPILE}gcc" "AArch64 cross-compiler" || ((errors++))
+    # 检查交叉编译器
+    is_command_available "${CROSS_COMPILE}gcc" "AArch64交叉编译器" || ((errors++))
     
     if ((errors == 0)); then
-        echo "✅ All kernel build dependencies are installed"
+        echo "✅ 所有内核构建依赖已安装"
         return 0
     else
-        echo "❌ Missing $errors required dependencies"
+        echo "❌ 缺少 $errors 个必需依赖"
         return 1
     fi
 }
 
-# Check if all required dependencies are installed for boot image build
-dependency_check_boot_build() {
+# 检查根文件系统构建所需的所有依赖是否已安装
+dependency_check_rootfs_build() {
     local errors=0
     
-    echo "🔍 Checking dependencies for boot image build..."
+    echo "🔍 检查根文件系统构建依赖..."
     
-    # Check essential tools
-    is_command_available "wget" "Wget download tool" || ((errors++))
-    is_command_available "parted" "Parted disk partitioning tool" || ((errors++))
-    is_command_available "mkfs.fat" "FAT filesystem creator" || ((errors++))
-    is_command_available "mount" "Mount command" || ((errors++))
-    is_command_available "umount" "Unmount command" || ((errors++))
-    is_command_available "losetup" "Loop device setup" || ((errors++))
-    is_command_available "blkid" "Block device identification" || ((errors++))
-    is_command_available "find" "Find command" || ((errors++))
-    is_command_available "cp" "Copy command" || ((errors++))
-    is_command_available "mkdir" "Make directory" || ((errors++))
-    is_command_available "rm" "Remove command" || ((errors++))
-    is_command_available "cat" "Cat command" || ((errors++))
-    is_command_available "dd" "DD disk copy tool" || ((errors++))
+    # 检查基本工具
+    is_command_available "wget" "Wget下载工具" || ((errors++))
+    is_command_available "parted" "Parted磁盘分区工具" || ((errors++))
+    is_command_available "mkfs.fat" "FAT文件系统创建器" || ((errors++))
+    is_command_available "mount" "挂载命令" || ((errors++))
+    is_command_available "umount" "卸载命令" || ((errors++))
+    is_command_available "losetup" "循环设备设置" || ((errors++))
+    is_command_available "blkid" "块设备识别工具" || ((errors++))
+    is_command_available "find" "查找命令" || ((errors++))
+    is_command_available "cp" "复制命令" || ((errors++))
+    is_command_available "mkdir" "创建目录" || ((errors++))
+    is_command_available "rm" "删除命令" || ((errors++))
+    is_command_available "cat" "显示文件内容" || ((errors++))
+    is_command_available "dd" "DD磁盘复制工具" || ((errors++))
     
     if ((errors == 0)); then
-        echo "✅ All boot image build dependencies are installed"
+        echo "✅ 所有根文件系统构建依赖已安装"
         return 0
     else
-        echo "❌ Missing $errors required dependencies"
+        echo "❌ 缺少 $errors 个必需依赖"
         return 1
     fi
 }
 
-# Check if all required dependencies are installed for version manager
+# 检查版本管理器所需的所有依赖是否已安装
 dependency_check_version_manager() {
     local errors=0
     
-    echo "🔍 Checking dependencies for version manager..."
+    echo "🔍 检查版本管理器依赖..."
     
-    # Check essential tools
+    # 检查基本工具
     is_command_available "gh" "GitHub CLI" || ((errors++))
-    is_command_available "curl" "CURL tool" || ((errors++))
-    is_command_available "git" "Git version control" || ((errors++))
-    is_command_available "sed" "Stream editor" || ((errors++))
-    is_command_available "grep" "Grep pattern matcher" || ((errors++))
-    is_command_available "date" "Date command" || ((errors++))
+    is_command_available "curl" "CURL工具" || ((errors++))
+    is_command_available "git" "Git版本控制" || ((errors++))
+    is_command_available "sed" "流编辑器" || ((errors++))
+    is_command_available "grep" "Grep模式匹配器" || ((errors++))
+    is_command_available "date" "日期命令" || ((errors++))
     
     if ((errors == 0)); then
-        echo "✅ All version manager dependencies are installed"
+        echo "✅ 所有版本管理器依赖已安装"
         return 0
     else
-        echo "❌ Missing $errors required dependencies"
+        echo "❌ 缺少 $errors 个必需依赖"
         return 1
     fi
 }
 
 # ----------------------------- 
-# Validation Functions
+# 验证函数
 # ----------------------------- 
 
-# Validate distribution
+# 验证发行版
 validate_distribution() {
     local distribution="$1"
     local version="$2"
     local supported=false
     
-    # Check if distribution is supported
+    # 检查发行版是否受支持
     for supported_distro in "${SUPPORTED_DISTRIBUTIONS[@]}"; do
         if [[ "$distribution" == "$supported_distro" ]]; then
             supported=true
@@ -203,12 +203,12 @@ validate_distribution() {
     done
     
     if [[ "$supported" == false ]]; then
-        echo "❌ Unsupported distribution: $distribution"
-        echo "✅ Supported distributions: ${SUPPORTED_DISTRIBUTIONS[*]}"
+        echo "❌ 不支持的发行版: $distribution"
+        echo "✅ 支持的发行版: ${SUPPORTED_DISTRIBUTIONS[*]}"
         return 1
     fi
     
-    # Check Ubuntu version if applicable
+    # 检查Ubuntu版本（如果适用）
     if [[ "$distribution" == "ubuntu" && -n "$version" ]]; then
         local version_supported=false
         for supported_ubuntu_version in "${SUPPORTED_UBUNTU_VERSIONS[@]}"; do
@@ -219,8 +219,8 @@ validate_distribution() {
         done
         
         if [[ "$version_supported" == false ]]; then
-            echo "❌ Unsupported Ubuntu version: $version"
-            echo "✅ Supported Ubuntu versions: ${SUPPORTED_UBUNTU_VERSIONS[*]}"
+            echo "❌ 不支持的Ubuntu版本: $version"
+            echo "✅ 支持的Ubuntu版本: ${SUPPORTED_UBUNTU_VERSIONS[*]}"
             return 1
         fi
     fi
@@ -228,124 +228,124 @@ validate_distribution() {
     return 0
 }
 
-# Validate kernel version format
+# 验证内核版本格式
 validate_kernel_version() {
     local version="$1"
     
-    # Basic kernel version validation (x.y or x.y.z format)
+    # 基本内核版本验证（x.y或x.y.z格式）
     if [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
         return 0
     else
-        echo "❌ Invalid kernel version format: $version"
-        echo "✅ Expected format: x.y or x.y.z (e.g., 6.18 or 6.18.1)"
+        echo "❌ 无效的内核版本格式: $version"
+        echo "✅ 期望格式: x.y 或 x.y.z (例如: 6.18 或 6.18.1)"
         return 1
     fi
 }
 
-# Validate GitHub repository format
+# 验证GitHub仓库格式
 validate_github_repo() {
     local repo="$1"
     
-    # Basic GitHub repository format validation (owner/repo)
+    # 基本GitHub仓库格式验证（所有者/仓库）
     if [[ "$repo" =~ ^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$ ]]; then
         return 0
     else
-        echo "❌ Invalid GitHub repository format: $repo"
-        echo "✅ Expected format: owner/repo (e.g., GengWei1997/ubuntu-xiaomi-raphael)"
+        echo "❌ 无效的GitHub仓库格式: $repo"
+        echo "✅ 期望格式: 所有者/仓库 (例如: GengWei1997/ubuntu-xiaomi-raphael)"
         return 1
     fi
 }
 
 # ----------------------------- 
-# Utility Functions
+# 实用函数
 # ----------------------------- 
 
-# Get Ubuntu download URL
+# 获取Ubuntu下载URL
 get_ubuntu_url() {
     local version="$1"
     local arch="$2"
     
-    # Generate Ubuntu base download URL
+    # 生成Ubuntu基础下载URL
     local url="${UBUNTU_DOWNLOAD_BASE}/${version}/release/${UBUNTU_IMAGE_TYPE}-${version}-base-${arch}.tar.gz"
     echo "$url"
 }
 
-# Set up QEMU for emulation
+# 设置QEMU进行模拟
 setup_qemu() {
     local image="$1"
     
-    echo "� Setting up QEMU for emulation..."
-    echo "Command: qemu-system-aarch64 -machine ${QEMU_MACHINE} -cpu ${QEMU_CPU} -m ${QEMU_MEMORY} -drive format=raw,file=${image} -net ${QEMU_NET} -nographic -append 'console=ttyAMA0 root=/dev/vda2'"
+    echo "🔧 设置QEMU进行模拟..."
+    echo "命令: qemu-system-aarch64 -machine ${QEMU_MACHINE} -cpu ${QEMU_CPU} -m ${QEMU_MEMORY} -drive format=raw,file=${image} -net ${QEMU_NET} -nographic -append 'console=ttyAMA0 root=/dev/vda2'"
     
-    # Check if QEMU is installed
-    is_command_available "${QEMU_SYSTEM}" "QEMU system emulator" || return 1
+    # 检查QEMU是否已安装
+    is_command_available "${QEMU_SYSTEM}" "QEMU系统模拟器" || return 1
     
     return 0
 }
 
-# Generate a timestamp
+# 生成时间戳
 generate_timestamp() {
     date +"%Y%m%d-%H%M%S"
 }
 
-# Create necessary directories
+# 创建必要目录
 create_directories() {
-    echo "📁 Creating necessary directories..."
+    echo "📁 创建必要目录..."
     mkdir -p "${TEMP_DIR}" "${OUTPUT_DIR}" "${OUTPUT_DIR}/kernel" "${OUTPUT_DIR}/rootfs" "${OUTPUT_DIR}/boot"
 }
 
 # ----------------------------- 
-# Parameter Validation Functions
+# 参数验证函数
 # ----------------------------- 
 
-# Validate root filesystem size
+# 验证根文件系统大小
 validate_rootfs_size() {
     local size="$1"
     
-    # Check if size has valid format (e.g., 4G, 10G)
+    # 检查大小是否具有有效格式（例如：4G, 10G）
     if [[ "$size" =~ ^[0-9]+[GM]$ ]]; then
         local numeric_size=${size::-1}
         
-        # Ensure minimum size is 2G
+        # 确保最小大小为2G
         if ((numeric_size >= 2)); then
             return 0
         else
-            echo "❌ Root filesystem size too small. Minimum size is 2G"
+            echo "❌ 根文件系统大小太小。最小大小为2G"
             return 1
         fi
     else
-        echo "❌ Invalid root filesystem size format: $size"
-        echo "✅ Expected format: [number][G|M] (e.g., 6G, 4096M)"
+        echo "❌ 无效的根文件系统大小格式: $size"
+        echo "✅ 期望格式: [数字][G|M] (例如: 6G, 4096M)"
         return 1
     fi
 }
 
-# Validate build threads count
+# 验证构建线程数
 validate_build_threads() {
     local threads="$1"
     
-    # Check if threads is a positive integer
+    # 检查线程数是否为正整数
     if [[ "$threads" =~ ^[0-9]+$ ]] && ((threads > 0)); then
         return 0
     else
-        echo "❌ Invalid build threads count: $threads"
-        echo "✅ Expected a positive integer (e.g., 4, 8)"
+        echo "❌ 无效的构建线程数: $threads"
+        echo "✅ 期望一个正整数 (例如: 4, 8)"
         return 1
     fi
 }
 
 # ----------------------------- 
-# Error Handling Functions
+# 错误处理函数
 # ----------------------------- 
 
-# Print error message and exit
+# 打印错误消息并退出
 fatal_error() {
     local message="$1"
-    echo -e "\033[0;31m❌ FATAL ERROR: $message\033[0m"
+    echo -e "\033[0;31m❌ 致命错误: $message\033[0m"
     exit 1
 }
 
-# Check command execution status
+# 检查命令执行状态
 check_status() {
     local status="$1"
     local success_message="$2"
@@ -361,15 +361,15 @@ check_status() {
 }
 
 # ----------------------------- 
-# Initialization
+# 初始化
 # ----------------------------- 
 
-# Source this file to load all configurations and functions
-# Example usage: source build-config.sh
+# 引用此文件以加载所有配置和函数
+# 使用示例: source build-config.sh
 
-# Validate critical configurations on load
+# 加载时验证关键配置
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    # This file is being sourced, perform basic validation
+    # 此文件正在被引用，执行基本验证
     validate_github_repo "${GITHUB_REPO}" || true
     validate_kernel_version "${KERNEL_VERSION_DEFAULT}" || true
 fi

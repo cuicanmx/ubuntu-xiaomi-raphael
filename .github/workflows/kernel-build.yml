@@ -207,7 +207,7 @@ jobs:
             
             ### Installing Kernel Packages:
             ```bash
-            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}-1_arm64.deb
+            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
             ```
             
             ### For Boot Image Creation:

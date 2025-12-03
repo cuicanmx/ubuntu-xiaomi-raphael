@@ -1,146 +1,146 @@
 #!/bin/bash
 
-# Kernel build script for Xiaomi K20 Pro (Raphael)
-# Standardized implementation with centralized configuration
+# 小米K20 Pro (Raphael) 内核构建脚本
+# 标准化实现，使用集中式配置
 
-set -e  # Exit on any error
-set -o pipefail  # Exit on pipe failures
+set -e  # 任何错误时退出
+set -o pipefail  # 管道失败时退出
 
 # ----------------------------- 
-# Error handling and recovery
+# 错误处理和恢复
 # ----------------------------- 
-# Enhanced error handling with severity levels
+# 具有严重性级别的增强错误处理
 handle_error() {
     local exit_code=$?
     local line_number=$1
     local function_name=$2
-    local error_level="${3:-fatal}"  # Default to fatal if not specified
+    local error_level="${3:-fatal}"  # 如果未指定，默认为致命错误
     
     case $error_level in
         "fatal")
-            log_error "❌ FATAL ERROR occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
+            log_error "❌ 致命错误发生在函数 '$function_name' 的第 $line_number 行 (退出代码: $exit_code)"
             
-            # Show current directory and environment info for debugging
-            log_info "📁 Current directory: $(pwd)"
-            log_info "🔧 Environment variables:"
+            # 显示当前目录和环境信息用于调试
+            log_info "📁 当前目录: $(pwd)"
+            log_info "🔧 环境变量:"
             env | grep -E "(CCACHE|ARCH|CROSS_COMPILE|KERNEL)" || true
             
-            # Attempt to cleanup before exiting
+            # 在退出前尝试清理
             cleanup
             
             exit $exit_code
             ;;
         "nonfatal")
-            log_warning "⚠️ NON-FATAL ERROR occurred in function '$function_name' at line $line_number (exit code: $exit_code)"
-            log_info "📝 Continuing build process despite error..."
-            return 0  # Continue execution
+            log_warning "⚠️ 非致命错误发生在函数 '$function_name' 的第 $line_number 行 (退出代码: $exit_code)"
+            log_info "📝 尽管有错误，继续构建过程..."
+            return 0  # 继续执行
             ;;
         *)
-            log_error "❌ UNKNOWN ERROR LEVEL: $error_level"
+            log_error "❌ 未知错误级别: $error_level"
             exit 1
             ;;
     esac
 }
 
-# Enhanced error handling for specific commands
+# 特定命令的增强错误处理
 safe_execute() {
     local command="$1"
     local error_level="${2:-fatal}"
     
-    log_info "🔧 Executing: $command"
+    log_info "🔧 执行: $command"
     
     if eval "$command"; then
-        log_success "✅ Command executed successfully"
+        log_success "✅ 命令执行成功"
         return 0
     else
         local exit_code=$?
-        log_warning "⚠️ Command failed with exit code: $exit_code"
+        log_warning "⚠️ 命令执行失败，退出代码: $exit_code"
         
         if [ "$error_level" = "nonfatal" ]; then
-            log_info "📝 Non-fatal error, continuing..."
+            log_info "📝 非致命错误，继续..."
             return $exit_code
         else
-            log_error "❌ Fatal error, terminating build"
+            log_error "❌ 致命错误，终止构建"
             exit $exit_code
         fi
     fi
 }
 
-# Set trap for ERR signal with enhanced error handling
+# 为ERR信号设置陷阱，使用增强错误处理
 trap 'handle_error $LINENO ${FUNCNAME[0]:-main} fatal' ERR
 
 # ----------------------------- 
-# Load centralized configuration
+# 加载集中式配置
 # ----------------------------- 
 if [ -f "build-config.sh" ]; then
     source "build-config.sh"
 else
-    echo "❌ Error: build-config.sh not found!"
+    echo "❌ 错误: build-config.sh 未找到!"
     exit 1
 fi
 
 # ----------------------------- 
-# Color output functions
+# 彩色输出函数
 # ----------------------------- 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m' # 无颜色
 
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[信息]${NC} $1"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[成功]${NC} $1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[警告]${NC} $1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[错误]${NC} $1"
 }
 
 # ----------------------------- 
-# Cleanup function
+# 清理函数
 # ----------------------------- 
 cleanup() {
-    log_info "Cleaning up temporary directories..."
+    log_info "正在清理临时目录..."
     
-    # Clean up temporary files and directories with error handling
+    # 清理临时文件和目录，带有错误处理
     if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-        log_info "Removing temporary directory: $TEMP_DIR"
+        log_info "删除临时目录: $TEMP_DIR"
         rm -rf "$TEMP_DIR" 2>/dev/null || {
-            log_warning "Failed to remove temporary directory: $TEMP_DIR"
-            # Try with sudo if permission issues
-            sudo rm -rf "$TEMP_DIR" 2>/dev/null || log_warning "Could not remove temporary directory even with sudo"
+            log_warning "删除临时目录失败: $TEMP_DIR"
+            # 如果有权限问题，尝试使用sudo
+            sudo rm -rf "$TEMP_DIR" 2>/dev/null || log_warning "即使使用sudo也无法删除临时目录"
         }
     else
-        log_info "No temporary directory to clean up"
+        log_info "没有临时目录需要清理"
     fi
     
-    log_success "Cleanup completed"
+    log_success "清理完成"
 }
 
 # ----------------------------- 
-# Error handling setup
+# 错误处理设置
 # ----------------------------- 
 trap cleanup EXIT
 
 # ----------------------------- 
-# Parameter parsing
+# 参数解析
 # ----------------------------- 
 parse_arguments() {
-    log_info "Parsing command-line arguments..."
+    log_info "正在解析命令行参数..."
     
-    # Set default values from environment variables or centralized configuration
+    # 从环境变量或集中式配置设置默认值
     KERNEL_VERSION="${KERNEL_VERSION:-${KERNEL_VERSION_DEFAULT}}"
     CACHE_ENABLED="${CACHE_ENABLED:-${CACHE_ENABLED_DEFAULT:-false}}"
     
-    # If only one argument and it's not an option, treat it as kernel version
+    # 如果只有一个参数且不是选项，将其视为内核版本
     if [[ $# -eq 1 && ! "$1" =~ ^- ]]; then
         KERNEL_VERSION="$1"
         shift 1
@@ -165,77 +165,85 @@ parse_arguments() {
                 exit 0
                 ;;
             *)
-                log_error "Unknown option: $1"
+                log_error "未知选项: $1"
                 show_help
                 exit 1
                 ;;
         esac
     done
     
-    log_success "Arguments parsed successfully"
+    log_success "参数解析成功"
 }
 
 # ----------------------------- 
-# Show help information
+# 显示帮助信息
 # ----------------------------- 
 show_help() {
     cat << EOF
-Usage: $0 [OPTIONS]
+用法: $0 [选项]
 
-Build kernel for Xiaomi K20 Pro (Raphael)
+为小米K20 Pro (Raphael) 构建内核
 
-OPTIONS:
-    -v, --version VERSION    Kernel version (e.g., 6.18) [default: ${KERNEL_VERSION_DEFAULT}]
-    --cache                  Enable build cache
-    --no-cache               Disable build cache [default: ${CACHE_ENABLED_DEFAULT:-false}]
-    -h, --help               Show this help message
+选项:
+    -v, --version 版本        内核版本 (例如: 6.18) [默认: ${KERNEL_VERSION_DEFAULT}]
+    --cache                   启用构建缓存
+    --no-cache                禁用构建缓存 [默认: ${CACHE_ENABLED_DEFAULT:-false}]
+    -h, --help                显示此帮助信息
 
-EXAMPLE:
+示例:
     $0 --version 6.18 --cache
 EOF
 }
 
 # ----------------------------- 
-# Validate parameters
+# 参数验证
 # ----------------------------- 
 validate_parameters() {
-    log_info "Validating parameters..."
+    log_info "正在验证参数..."
     
-    # Validate kernel version format
-    validate_kernel_version "$KERNEL_VERSION" || {
-        log_error "Invalid kernel version format"
+    # 验证内核版本格式 (例如: 6.18, 5.15)
+    if [[ ! "$KERNEL_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        log_error "无效的内核版本格式: $KERNEL_VERSION"
+        log_error "期望格式: 主版本.次版本 (例如: 6.18, 5.15)"
         exit 1
-    }
+    fi
     
-    # Set kernel branch name based on version
+    # 验证缓存选项
+    if [[ "$CACHE_ENABLED" != "true" && "$CACHE_ENABLED" != "false" ]]; then
+        log_error "无效的缓存选项: $CACHE_ENABLED"
+        log_error "期望值: true 或 false"
+        exit 1
+    fi
+    
+    # 设置基于版本的内核分支名称
     KERNEL_BRANCH="${KERNEL_BRANCH_PREFIX}${KERNEL_VERSION}"
     
-    # Set up directory paths with consistent naming
+    # 使用一致的命名设置目录路径
     TEMP_DIR="$(mktemp -d)"
     KERNEL_BUILD_DIR="${TEMP_DIR}/linux"
     OUTPUT_DIR="${WORKING_DIR}/output/kernel"
     
-    # Create output directory
+    # 创建输出目录
     mkdir -p "$OUTPUT_DIR"
     
-    log_success "Parameters validated successfully"
-    log_info "Kernel version: $KERNEL_VERSION"
-    log_info "Kernel branch: $KERNEL_BRANCH"
-    log_info "Temporary directory: $TEMP_DIR"
-    log_info "Build directory: $KERNEL_BUILD_DIR"
-    log_info "Output directory: $OUTPUT_DIR"
+    log_success "参数验证成功"
+    log_info "内核版本: $KERNEL_VERSION"
+    log_info "内核分支: $KERNEL_BRANCH"
+    log_info "临时目录: $TEMP_DIR"
+    log_info "构建目录: $KERNEL_BUILD_DIR"
+    log_info "输出目录: $OUTPUT_DIR"
 }
 
 # ----------------------------- 
-# Install dependencies
+# 安装依赖项
 # ----------------------------- 
 install_dependencies() {
-    log_info "Installing cross-compilation dependencies..."
+    log_info "正在安装交叉编译依赖项..."
     
-    # Update package list
+    # 更新软件包列表
     sudo apt update
     
-    # Install required packages including ccache
+    # 安装必需的软件包，包括ccache
     sudo apt install -y \
         crossbuild-essential-arm64 \
         git \
@@ -252,16 +260,16 @@ install_dependencies() {
         fakeroot \
         ccache
     
-    log_success "Dependencies installed successfully"
+    log_success "依赖项安装成功"
 }
 
 # ----------------------------- 
-# Check dependencies
+# 检查依赖项
 # ----------------------------- 
 check_dependencies() {
-    log_info "🔍 Checking build dependencies..."
+    log_info "🔍 正在检查构建依赖项..."
     
-    # Check for essential cross-compilation tools
+    # 检查必需的交叉编译工具
     local required_tools=("aarch64-linux-gnu-gcc" "aarch64-linux-gnu-g++" "make" "git" "ccache")
     local missing_tools=()
     
@@ -272,146 +280,146 @@ check_dependencies() {
     done
     
     if [ ${#missing_tools[@]} -eq 0 ]; then
-        log_success "All essential dependencies are available"
+        log_success "所有必需的依赖项都可用"
         return 0
     else
-        log_warning "Missing dependencies: ${missing_tools[*]}"
-        log_warning "Dependencies should be installed in the GitHub Actions workflow"
-        log_warning "Attempting to install missing dependencies..."
+        log_warning "缺少依赖项: ${missing_tools[*]}"
+        log_warning "依赖项应该在GitHub Actions工作流中安装"
+        log_warning "尝试安装缺少的依赖项..."
         
-        # Fallback: try to install missing dependencies
+        # 备用方案：尝试安装缺少的依赖项
         install_dependencies
         return $?
     fi
 }
 
 # ----------------------------- 
-# Clone kernel source
+# 克隆内核源代码
 # ----------------------------- 
 clone_kernel_source() {
-    log_info "📥 Cloning kernel source from ${KERNEL_REPO} (${KERNEL_BRANCH})..."
+    log_info "📥 正在从 ${KERNEL_REPO} (${KERNEL_BRANCH}) 克隆内核源代码..."
     
-    # Clone the kernel repository with specific branch
+    # 克隆指定分支的内核仓库
     git clone --branch "${KERNEL_BRANCH}" --depth 1 "${KERNEL_REPO}" "${TEMP_DIR}/linux"
     
     if [ $? -ne 0 ]; then
-        log_error "❌ Failed to clone kernel source"
+        log_error "❌ 克隆内核源代码失败"
         exit 1
     fi
     
-    # Update kernel build directory path
+    # 更新内核构建目录路径
     KERNEL_BUILD_DIR="${TEMP_DIR}/linux"
     
-    # Verify the cloned repository
-    log_info "🔍 Verifying cloned repository..."
+    # 验证克隆的仓库
+    log_info "🔍 正在验证克隆的仓库..."
     cd "${KERNEL_BUILD_DIR}"
     git log --oneline -1
     cd - > /dev/null
     
-    log_success "✅ Kernel source cloned successfully"
-    log_info "📁 Kernel build directory: ${KERNEL_BUILD_DIR}"
+    log_success "✅ 内核源代码克隆成功"
+    log_info "📁 内核构建目录: ${KERNEL_BUILD_DIR}"
 }
 
 # ----------------------------- 
-# Configure kernel
+# 配置内核
 # ----------------------------- 
 configure_kernel() {
-    log_info "⚙️ Configuring kernel..."
+    log_info "⚙️ 正在配置内核..."
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Use environment variables from GitHub Actions workflow
-    # CCACHE configuration is already handled by the workflow
+    # 使用GitHub Actions工作流中的环境变量
+    # CCACHE配置已由工作流处理
     
-    # Verify ccache is available and show status
+    # 验证ccache是否可用并显示状态
     if command -v ccache >/dev/null 2>&1; then
-        log_info "🔧 Using ccache with cache directory: $CCACHE_DIR"
-        log_info "📊 ccache status before configuration:"
-        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
+        log_info "🔧 使用ccache，缓存目录: $CCACHE_DIR"
+        log_info "📊 配置前的ccache状态:"
+        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache状态"
     else
-        log_warning "⚠️ ccache not available, building without cache"
+        log_warning "⚠️ ccache不可用，无缓存构建"
     fi
     
-    log_info "🔧 Running kernel configuration..."
-    log_info "📋 Configuration commands: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
+    log_info "🔧 正在运行内核配置..."
+    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
     
-    # Use the exact command from user's requirements with ccache
+    # 使用用户需求中的确切命令，包含ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
-        log_error "❌ Kernel configuration failed"
+        log_error "❌ 内核配置失败"
         exit 1
     fi
     
-    # Verify configuration files were created
-    log_info "🔍 Verifying configuration files..."
+    # 验证配置文件是否已创建
+    log_info "🔍 正在验证配置文件..."
     if [ -f ".config" ]; then
-        log_success "✅ Kernel configuration file created successfully"
-        log_info "📁 Configuration file size: $(du -h .config | cut -f1)"
+        log_success "✅ 内核配置文件创建成功"
+        log_info "📁 配置文件大小: $(du -h .config | cut -f1)"
     else
-        log_error "❌ Kernel configuration file not found"
+        log_error "❌ 未找到内核配置文件"
         exit 1
     fi
     
-    log_success "✅ Kernel configured successfully"
+    log_success "✅ 内核配置成功"
     cd - > /dev/null
 }
 
 # ----------------------------- 
-# Build kernel
+# 构建内核
 # ----------------------------- 
 build_kernel() {
-    log_info "🔨 Building kernel..."
+    log_info "🔨 正在构建内核..."
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # Use environment variables from GitHub Actions workflow
-    # CCACHE configuration is already handled by the workflow
+    # 使用GitHub Actions工作流中的环境变量
+    # CCACHE配置已由工作流处理
     
-    # Verify ccache is available and show status
+    # 验证ccache是否可用并显示状态
     if command -v ccache >/dev/null 2>&1; then
-        log_info "🔧 Using ccache for kernel build"
-        log_info "📁 ccache directory: $CCACHE_DIR"
-        log_info "📊 ccache status before build:"
-        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
+        log_info "🔧 使用ccache进行内核构建"
+        log_info "📁 ccache目录: $CCACHE_DIR"
+        log_info "📊 构建前的ccache状态:"
+        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache状态"
     else
-        log_warning "⚠️ ccache not available, building without cache"
+        log_warning "⚠️ ccache不可用，无缓存构建"
     fi
     
-    log_info "🔨 Starting kernel compilation..."
-    log_info "📋 Build command: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
-    log_info "🖥️ Using $(nproc) CPU cores for compilation"
+    log_info "🔨 开始内核编译..."
+    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
+    log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    # Use the exact command from user's requirements with ccache
+    # 使用用户需求中的确切命令，包含ccache
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
-        log_error "❌ Kernel build failed"
+        log_error "❌ 内核构建失败"
         exit 1
     fi
     
-    # Get the actual kernel version from the build
+    # 从构建中获取实际的内核版本
     _kernel_version="$(make kernelrelease -s)"
     export _kernel_version
     
-    # Verify kernel image was created
-    log_info "🔍 Verifying kernel build output..."
+    # 验证内核镜像是否已创建
+    log_info "🔍 正在验证内核构建输出..."
     if [ -f "arch/arm64/boot/Image.gz" ]; then
-        log_success "✅ Kernel image created successfully"
-        log_info "📁 Kernel image size: $(du -h arch/arm64/boot/Image.gz | cut -f1)"
+        log_success "✅ 内核镜像创建成功"
+        log_info "📁 内核镜像大小: $(du -h arch/arm64/boot/Image.gz | cut -f1)"
     else
-        log_error "❌ Kernel image not found"
+        log_error "❌ 未找到内核镜像"
         exit 1
     fi
     
-    # Show ccache statistics after build
+    # 显示构建后的ccache统计信息
     if command -v ccache >/dev/null 2>&1; then
-        log_info "📊 ccache statistics after build:"
-        ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache statistics"
+        log_info "📊 构建后的ccache统计信息:"
+        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache统计信息"
     fi
     
-    log_success "✅ Kernel built successfully (version: $_kernel_version)"
-    log_info "📁 Build output: arch/arm64/boot/Image.gz"
+    log_success "✅ 内核构建成功 (版本: $_kernel_version)"
+    log_info "📁 构建输出: arch/arm64/boot/Image.gz"
     cd - > /dev/null
 }
 
@@ -511,9 +519,9 @@ create_kernel_package() {
     # Copy packages to output directory
     log_info "📁 Moving packages to output directory..."
     mkdir -p "${OUTPUT_DIR}"
-    mv linux-xiaomi-raphael.deb "${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}.deb"
-    mv firmware-xiaomi-raphael.deb "${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}.deb"
-    mv alsa-xiaomi-raphael.deb "${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}.deb"
+    mv linux-xiaomi-raphael.deb "${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    mv firmware-xiaomi-raphael.deb "${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    mv alsa-xiaomi-raphael.deb "${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}_arm64.deb"
     
     # Clean up the linux directory
     rm -rf linux
@@ -527,9 +535,9 @@ create_kernel_package() {
     done
     
     log_success "✅ Kernel packages created successfully"
-    log_info "📦 Kernel package: ${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}.deb"
-    log_info "📦 Firmware package: ${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}.deb"
-    log_info "📦 ALSA package: ${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}.deb"
+    log_info "📦 Kernel package: ${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    log_info "📦 Firmware package: ${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    log_info "📦 ALSA package: ${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}_arm64.deb"
 }
 
 # ----------------------------- 
