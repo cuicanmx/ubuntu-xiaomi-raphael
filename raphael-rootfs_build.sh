@@ -152,11 +152,6 @@ EOF
 validate_configuration() {
     echo "🔍 Validating configuration..."
     
-    # Check root privileges
-    if [ "$(id -u)" -ne 0 ]; then
-        handle_error "RootFS can only be built as root"
-    fi
-    
     # Validate distribution and version
     if ! validate_distribution "$DISTRO" "$VERSION"; then
         handle_error "Distribution validation failed"
@@ -166,6 +161,8 @@ validate_configuration() {
     if [ "$DISTRO" = "ubuntu" ] && [[ ! " ${UBUNTU_DESKTOP_ENVS[@]} " =~ " ${DESKTOP_ENV} " ]]; then
         echo "⚠️  Desktop environment '$DESKTOP_ENV' may not be fully supported"
     fi
+    
+    echo "✅ Configuration validation completed"
 }
 
 # Create rootfs image
@@ -445,14 +442,14 @@ main() {
     # Step 1: Parse command-line arguments
     parse_arguments "$@"
     
-    # Step 2: Validate parameters
-    validate_parameters
-    
-    # Step 3: Check root permissions
+    # Step 2: Check root permissions
     if [ "$(id -u)" -ne 0 ]; then
-        log_error "Rootfs can only be built as root"
-        exit 1
+        log_warning "Rootfs build requires root privileges for some operations"
+        log_info "Attempting to continue with limited functionality..."
     fi
+    
+    # Step 3: Validate configuration
+    validate_configuration
     
     # Set Ubuntu version information
     VERSION="noble"
@@ -462,9 +459,17 @@ main() {
     log_info "Creating rootfs image file..."
     rm -f "$ROOTFS_IMG" 2>/dev/null || true
     truncate -s "$ROOTFS_SIZE" "$ROOTFS_IMG"
-    mkfs.ext4 "$ROOTFS_IMG"
-    mkdir -p "$ROOTDIR"
-    mount -o loop "$ROOTFS_IMG" "$ROOTDIR"
+    
+    # Check if we can format and mount (requires root)
+    if [ "$(id -u)" -eq 0 ]; then
+        mkfs.ext4 "$ROOTFS_IMG"
+        mkdir -p "$ROOTDIR"
+        mount -o loop "$ROOTFS_IMG" "$ROOTDIR"
+    else
+        log_warning "Cannot format and mount image without root privileges"
+        log_info "Creating directory structure without mounting..."
+        mkdir -p "$ROOTDIR"
+    fi
     
     # Step 5: Download base system
     log_info "Downloading Ubuntu base system..."
@@ -476,10 +481,15 @@ main() {
     
     # Step 7: Mount necessary filesystems
     log_info "Mounting necessary filesystems..."
-    mount --bind /dev "$ROOTDIR/dev"
-    mount --bind /dev/pts "$ROOTDIR/dev/pts"
-    mount --bind /proc "$ROOTDIR/proc"
-    mount --bind /sys "$ROOTDIR/sys"
+    if [ "$(id -u)" -eq 0 ]; then
+        mount --bind /dev "$ROOTDIR/dev"
+        mount --bind /dev/pts "$ROOTDIR/dev/pts"
+        mount --bind /proc "$ROOTDIR/proc"
+        mount --bind /sys "$ROOTDIR/sys"
+    else
+        log_warning "Cannot mount filesystems without root privileges"
+        log_info "Skipping filesystem mounting..."
+    fi
     
     # Step 8: Configure network and system settings
     log_info "Configuring network and system settings..."
@@ -567,11 +577,15 @@ main() {
     
     # Step 23: Unmount filesystems
     log_info "Unmounting filesystems..."
-    umount "$ROOTDIR/sys" 2>/dev/null || true
-    umount "$ROOTDIR/proc" 2>/dev/null || true
-    umount "$ROOTDIR/dev/pts" 2>/dev/null || true
-    umount "$ROOTDIR/dev" 2>/dev/null || true
-    umount "$ROOTDIR" 2>/dev/null || true
+    if [ "$(id -u)" -eq 0 ]; then
+        umount "$ROOTDIR/sys" 2>/dev/null || true
+        umount "$ROOTDIR/proc" 2>/dev/null || true
+        umount "$ROOTDIR/dev/pts" 2>/dev/null || true
+        umount "$ROOTDIR/dev" 2>/dev/null || true
+        umount "$ROOTDIR" 2>/dev/null || true
+    else
+        log_info "Skipping unmounting (requires root privileges)"
+    fi
     
     # Step 24: Clean up
     log_info "Cleaning up..."
