@@ -39,7 +39,6 @@ on:
       type: choice
       options:
       - release
-        default: release
       desktop_environment:
         description: 'Desktop environment to install (only for ubuntu)'
         required: false
