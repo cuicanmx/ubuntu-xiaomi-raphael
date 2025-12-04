@@ -501,47 +501,87 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.event.inputs.release_tag }}
-        name: "Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}"
+        name: "🎯 小米 Raphael ${{ github.event.inputs.distribution }} 发行版 - 内核 ${{ github.event.inputs.kernel_version }}"
         body: |
-          # Raphael ${{ github.event.inputs.distribution }} ${{ github.event.inputs.kernel_version }}
+          # 🎯 小米 Raphael (K20 Pro) ${{ github.event.inputs.distribution }} 发行版
           
-          ## RootFS Images
-          - **Full Image**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          - **Compressed**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (recommended for boot image builds)
-          - **Boot Package**: boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (contains UUID, initrd.img, and vmlinuz for boot image creation)
+          ## 📦 发行版信息
           
-          ## Build Information
-          - Distribution: ${{ github.event.inputs.distribution }}
-          - Kernel Version: ${{ github.event.inputs.kernel_version }}
-          - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
-          - Architecture: ARM64
-          - Target Device: Xiaomi Raphael (K20 Pro)
-          - Build Date: ${{ github.event.repository.created_at }}
-          - Build ID: ${{ github.run_id }}
+          ### 🏷️ 基本信息
+          - **设备型号**: 小米 Raphael (K20 Pro)
+          - **发行版本**: ${{ github.event.inputs.distribution }}
+          - **内核版本**: ${{ github.event.inputs.kernel_version }}
+          - **桌面环境**: ${{ github.event.inputs.desktop_environment }}
+          - **架构平台**: ARM64
           
-          ## Usage
+          ### 📊 构建详情
+          - **构建日期**: ${{ github.event.repository.created_at }}
+          - **构建ID**: ${{ github.run_id }}
+          - **发布标签**: ${{ github.event.inputs.release_tag }}
           
-          ### Flashing Instructions:
+          ## 🗂️ 文件说明
+          
+          ### 🔧 RootFS 系统镜像
+          - **完整镜像**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          - **压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (推荐用于启动镜像构建)
+          
+          ### 🚀 启动文件包
+          - **启动包**: boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
+            - 包含 UUID、initrd.img 和 vmlinuz 文件
+            - 用于启动镜像创建
+          
+          ## 📋 使用指南
+          
+          ### 🔥 刷机说明
           ```bash
-          # Unzip the RootFS
+          # 解压 RootFS 镜像
           unzip root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
           
-          # Flash to your device (adjust for your setup)
+          # 刷入设备 (根据您的设置调整)
           fastboot flash system root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
           ```
           
-          ## Usage Notes
-          - For boot image creation, download the .zip file for faster transfer
-          - Extract the .img file from the .zip before use
+          ### 💡 使用提示
+          - 启动镜像构建时，建议下载 .zip 文件以获得更快的传输速度
+          - 使用前请从 .zip 文件中提取 .img 镜像文件
+          - 确保设备已解锁 bootloader
+          - 建议在刷机前备份重要数据
           
-          ## Changelog
-          - Kernel version: ${{ github.event.inputs.kernel_version }}
-          - Distribution: ${{ github.event.inputs.distribution }}
-          - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
+          ## 🎯 设备兼容性
           
-        files: |
-          root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
-          boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
-        draft: false
-        prerelease: false
+          ### ✅ 支持设备
+          - 小米 Raphael (K20 Pro)
+          - 基于 SM8150 平台的设备
+          
+          ### 🔧 硬件要求
+          - ARM64 架构处理器
+          - 至少 2GB 可用存储空间
+          - 已解锁的 bootloader
+          
+          ## 📝 更新日志
+          
+          ### 🔄 版本更新
+          - **内核版本**: ${{ github.event.inputs.kernel_version }}
+          - **发行版本**: ${{ github.event.inputs.distribution }}
+          - **桌面环境**: ${{ github.event.inputs.desktop_environment }}
+          
+          ### ✨ 功能特性
+          - 完整的 Linux 发行版体验
+          - 优化的 ARM64 性能
+          - 针对小米 Raphael 设备的专门优化
+          - 稳定的内核和系统组件
+          
+          ## ❓ 常见问题
+          
+          ### Q: 如何验证镜像完整性？
+          A: 下载后检查文件大小和哈希值，确保文件完整。
+          
+          ### Q: 是否需要特殊工具？
+          A: 需要 fastboot 工具和已解锁的 bootloader。
+          
+          ### Q: 支持哪些桌面环境？
+          A: 当前支持 ${{ github.event.inputs.desktop_environment }} 桌面环境。
+          
+          ---
+          
+          *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*

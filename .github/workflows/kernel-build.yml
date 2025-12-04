@@ -108,50 +108,98 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.kernel_version }}
-          name: "Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+          name: "🔧 小米 Raphael 内核 ${{ github.event.inputs.kernel_version }} - 专为 ARM64 优化"
           body: |
-            # Kernel ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael
+            # 🔧 小米 Raphael (K20 Pro) 内核 ${{ github.event.inputs.kernel_version }}
             
-            ## Build Information
-            - Kernel Version: ${{ github.event.inputs.kernel_version }}
-            - Architecture: ARM64
-            - Target Device: Xiaomi Raphael (K20 Pro)
-            - Build Date: ${{ github.event.repository.created_at }}
-            - Build ID: ${{ github.run_id }}
+            ## 🏷️ 内核信息
             
-            ## Generated Files
-            - **Kernel Packages**: DEB packages for installation
-            - **Kernel Image**: Raw kernel binary (Image.gz)
-            - **DTB Files**: Device Tree Blobs for hardware configuration
-            - **Compressed Archives**: Complete kernel build in tar.gz and zip formats
+            ### 📊 基本信息
+            - **设备型号**: 小米 Raphael (K20 Pro)
+            - **内核版本**: ${{ github.event.inputs.kernel_version }}
+            - **架构平台**: ARM64
+            - **目标平台**: SM8150 (骁龙 855)
             
-            ## Usage
+            ### 🔧 构建详情
+            - **构建日期**: ${{ github.event.repository.created_at }}
+            - **构建ID**: ${{ github.run_id }}
+            - **发布标签**: v${{ github.event.inputs.kernel_version }}
             
-            ### Installing Kernel Packages:
+            ## 🗂️ 文件说明
+            
+            ### 📦 内核包文件
+            - **DEB 安装包**: linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            - **内核镜像**: Image.gz-${{ github.event.inputs.kernel_version }}
+            - **设备树文件**: dtbs/sm8150-*.dtb
+            
+            ### 📁 压缩归档
+            - **完整压缩包**: kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
+            - **ZIP 格式**: kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
+            
+            ## 📋 使用指南
+            
+            ### 🔧 安装内核包
             ```bash
+            # 安装 DEB 包
             sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            
+            # 安装依赖
+            sudo apt-get install -f
             ```
             
-            ### Using Compressed Archives:
-            Extract the compressed archive to get all kernel files in one place:
+            ### 📦 使用压缩归档
             ```bash
+            # 解压 tar.gz 格式
             tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
-            # or
+            
+            # 或解压 ZIP 格式
             unzip kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
             ```
             
-            ### For Boot Image Creation:
-            Use the `Image.gz` file and corresponding DTB files with your boot image builder.
+            ### 🚀 启动镜像构建
+            使用 Image.gz 文件和对应的 DTB 文件进行启动镜像构建：
+            ```bash
+            # 提取内核镜像和 DTB 文件
+            cp output/kernel/Image.gz-${{ github.event.inputs.kernel_version }} ./kernel-image
+            cp output/kernel/dtbs/sm8150-*.dtb ./dtb-files/
+            ```
             
-            ## Changelog
-            - Kernel version update to ${{ github.event.inputs.kernel_version }}
-            - Added compressed archive support for easier distribution
-            - Bug fixes and performance improvements
-          files: |
-            output/kernel/*.deb
-            output/kernel/Image.gz-*
-            output/kernel/dtbs/*
-            output/kernel/kernel-*.tar.gz
-            output/kernel/kernel-*.zip
-          draft: false
-          prerelease: false
+            ## 🎯 设备兼容性
+            
+            ### ✅ 支持设备
+            - 小米 Raphael (K20 Pro)
+            - 基于 SM8150 平台的设备
+            
+            ### 🔧 硬件特性
+            - 骁龙 855 处理器优化
+            - 完整的 ARM64 支持
+            - 针对移动设备的电源管理
+            - 优化的 GPU 和显示驱动
+            
+            ## 📝 更新日志
+            
+            ### 🔄 版本更新
+            - **内核版本**: ${{ github.event.inputs.kernel_version }}
+            - **设备支持**: 针对小米 Raphael 的专门优化
+            - **性能改进**: 优化的调度器和电源管理
+            
+            ### ✨ 功能特性
+            - 最新的 Linux 内核功能
+            - 针对移动设备的优化
+            - 稳定的驱动支持
+            - 完整的 ARM64 架构支持
+            
+            ## ❓ 常见问题
+            
+            ### Q: 如何验证内核安装？
+            A: 重启后运行 `uname -r` 检查内核版本。
+            
+            ### Q: 是否需要特殊配置？
+            A: 内核已针对设备进行预配置，无需额外配置。
+            
+            ### Q: 支持哪些功能？
+            A: 支持完整的 Linux 功能，包括网络、存储、显示等。
+            
+            ---
+            
+            *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
