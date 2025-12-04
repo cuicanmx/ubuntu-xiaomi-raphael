@@ -261,7 +261,7 @@ jobs:
          sudo kpartx -d "$ROOTFS_IMAGE"
 
     - name: Create boot package
-       run: |
+      run: |
          BOOT_PACKAGE="boot-files-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
          
          [ -d "boot-files" ] || { echo "boot-files directory not found"; exit 1; }
