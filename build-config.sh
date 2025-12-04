@@ -163,17 +163,10 @@ get_ubuntu_url() {
     echo "$url"
 }
 
-# 设置QEMU进行模拟
-setup_qemu() {
-    local image="$1"
-    
-    echo "🔧 设置QEMU进行模拟..."
-    echo "命令: qemu-system-aarch64 -machine ${QEMU_MACHINE} -cpu ${QEMU_CPU} -m ${QEMU_MEMORY} -drive format=raw,file=${image} -net ${QEMU_NET} -nographic -append 'console=ttyAMA0 root=/dev/vda2'"
-    
-    # 检查QEMU是否已安装
-    is_command_available "${QEMU_SYSTEM}" "QEMU系统模拟器" || return 1
-    
-    return 0
+# ARM64原生环境设置
+setup_arm64_environment() {
+    echo "🔧 设置ARM64原生环境..."
+    echo "当前运行在ARM64架构上，无需模拟"
 }
 
 # 生成时间戳

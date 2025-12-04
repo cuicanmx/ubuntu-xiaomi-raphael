@@ -147,14 +147,9 @@ jobs:
          # 基础依赖包
          BASE_DEPS="fakeroot cpio kmod rsync wget curl file parted dosfstools e2fsprogs util-linux systemd-container jq kpartx"
          
-         # 根据架构决定是否安装QEMU
-         if [ "$(uname -m)" != "aarch64" ]; then
-             echo "🔧 Running on $(uname -m), installing QEMU for emulation..."
-             sudo apt install -y qemu-user-static binfmt-support $BASE_DEPS
-         else
-             echo "🔧 Running on ARM64, installing native dependencies..."
-             sudo apt install -y binfmt-support $BASE_DEPS
-         fi
+         # 在ARM64架构上安装依赖
+         echo "🔧 Running on ARM64, installing native dependencies..."
+         sudo apt install -y binfmt-support $BASE_DEPS
 
     - name: Build rootfs
       run: |

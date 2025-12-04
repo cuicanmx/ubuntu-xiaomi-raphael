@@ -39,15 +39,9 @@ main() {
     echo "xiaomi-raphael" | tee "$ROOTDIR/etc/hostname" &&
     echo -e "127.0.0.1 localhost\n127.0.1.1 xiaomi-raphael" | tee "$ROOTDIR/etc/hosts" &&
     
-    if [ "$(uname -m)" != "aarch64" ]; then
-        wget "https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-aarch64-static" &&
-        install -m755 qemu-aarch64-static "$ROOTDIR/" &&
-        echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register &&
-        echo ':aarch64ld:M::\x7fELF\x02\x01\x01\x03\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/qemu-aarch64-static:' | tee /proc/sys/fs/binfmt_misc/register
-    else
-        [ ! -f /proc/sys/fs/binfmt_misc/aarch64 ] &&
-        echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff::' | tee /proc/sys/fs/binfmt_misc/register
-    fi &&
+    # 在ARM64架构上设置二进制格式支持
+    [ ! -f /proc/sys/fs/binfmt_misc/aarch64 ] &&
+    echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff::' | tee /proc/sys/fs/binfmt_misc/register &&
     
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
     export DEBIAN_FRONTEND=noninteractive
@@ -87,12 +81,8 @@ main() {
     
     chroot "$ROOTDIR" apt clean &&
     
-    if [ "$(uname -m)" != "aarch64" ]; then
-        echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64 2>/dev/null || true
-        echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64ld 2>/dev/null || true
-        rm -f "$ROOTDIR/qemu-aarch64-static" 2>/dev/null || true
-        rm -f qemu-aarch64-static 2>/dev/null || true
-    fi &&
+    # 清理二进制格式注册
+    echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64 2>/dev/null || true &&
     
     umount "$ROOTDIR/sys" &&
     umount "$ROOTDIR/proc" &&
