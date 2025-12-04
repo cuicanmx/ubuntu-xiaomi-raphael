@@ -127,41 +127,30 @@ jobs:
             
             ## 🗂️ 文件说明
             
-            ### 📦 内核包文件
-            - **DEB 安装包**: linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            - **内核镜像**: Image.gz-${{ github.event.inputs.kernel_version }}
-            - **设备树文件**: dtbs/sm8150-*.dtb
-            
-            ### 📁 压缩归档
+            ### 📦 压缩归档包（推荐使用）
             - **完整压缩包**: kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
             - **ZIP 格式**: kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
             
+            ### 📁 压缩包内容
+            压缩包包含以下内核包文件：
+            - linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            - firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            - alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            
             ## 📋 使用指南
             
-            ### 🔧 安装内核包
-            ```bash
-            # 安装 DEB 包
-            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            
-            # 安装依赖
-            sudo apt-get install -f
-            ```
-            
-            ### 📦 使用压缩归档
+            ### 📦 使用压缩归档（推荐）
             ```bash
             # 解压 tar.gz 格式
             tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
             
             # 或解压 ZIP 格式
             unzip kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
-            ```
             
-            ### 🚀 启动镜像构建
-            使用 Image.gz 文件和对应的 DTB 文件进行启动镜像构建：
-            ```bash
-            # 提取内核镜像和 DTB 文件
-            cp output/kernel/Image.gz-${{ github.event.inputs.kernel_version }} ./kernel-image
-            cp output/kernel/dtbs/sm8150-*.dtb ./dtb-files/
+            # 安装内核包
+            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            sudo dpkg -i firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            sudo dpkg -i alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
             ```
             
             ## 🎯 设备兼容性
@@ -203,3 +192,7 @@ jobs:
             ---
             
             *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
+          files: |
+            output/kernel/kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
+            output/kernel/kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
+        if: ${{ github.event.inputs.upload_to_release == true }}

@@ -220,27 +220,21 @@ validate_arguments() {
 # Download boot image
 # ----------------------------- 
 download_boot_image() {
-    local boot_filename=$(basename "$BOOT_SOURCE")
-    local cached_boot="$BOOT_CACHE_DIR/$boot_filename"
     local boot_file="$TEMP_DIR/original-boot.img"
     
-    log_info "Downloading boot image from: $BOOT_SOURCE"
+    # 使用固定的GitHub Releases URL
+    local BOOT_SOURCE_URL="https://github.com/GengWei1997/kernel-deb/releases/download/v1.0.0/xiaomi-k20pro-boot.img"
     
-    # Check if boot image is in cache
-    if [ "$USE_CACHE" = "true" ] && [ -f "$cached_boot" ]; then
-        log_success "Using cached boot image: $cached_boot"
-        cp "$cached_boot" "$boot_file"
+    log_info "Downloading boot image from: $BOOT_SOURCE_URL"
+    
+    # 直接下载boot镜像
+    if wget -O "$boot_file" "$BOOT_SOURCE_URL" 2>/dev/null; then
+        log_success "Boot image downloaded successfully"
         echo "$boot_file"
     else
-        if wget -O "$cached_boot" "$BOOT_SOURCE" 2>/dev/null; then
-            cp "$cached_boot" "$boot_file"
-            log_success "Boot image downloaded and cached successfully"
-            echo "$boot_file"
-        else
-            log_warning "Failed to download boot image, creating empty one"
-            create_empty_boot_image "$boot_file"
-            echo "$boot_file"
-        fi
+        log_warning "Failed to download boot image, creating empty one"
+        create_empty_boot_image "$boot_file"
+        echo "$boot_file"
     fi
 }
 
@@ -381,56 +375,67 @@ extract_uuid_from_rootfs() {
 }
 
 # ----------------------------- 
-# Copy kernel files from boot package or rootfs
+# Copy kernel files from rootfs to boot image
 # ----------------------------- 
 copy_kernel_files() {
-    log_info "Copying kernel files..."
+    log_info "Copying kernel files from rootfs to boot image..."
     
-    # 优先使用boot包中的文件
-    if [[ -f "boot-files/vmlinuz" && -f "boot-files/initrd.img" ]]; then
-        log_info "Using kernel files from boot package"
-        
-        # 复制vmlinuz
-        cp "boot-files/vmlinuz" "$MOUNT_DIR/linux.efi"
-        log_success "Copied vmlinuz -> linux.efi"
-        
-        # 复制initrd.img
-        cp "boot-files/initrd.img" "$MOUNT_DIR/initramfs"
-        log_success "Copied initrd.img -> initramfs"
-        
+    # Mount rootfs
+    sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
+        log_error "Failed to mount rootfs image"
+        return 1
+    }
+    
+    # Create dtbs directory in boot image if it doesn't exist
+    sudo mkdir -p "$MOUNT_DIR/dtbs"
+    
+    # Copy device tree binaries
+    log_info "Copying device tree binaries..."
+    if [ -d "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" ]; then
+        sudo cp -r "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" "$MOUNT_DIR/dtbs/"
+        log_success "Copied device tree binaries"
     else
-        log_info "Boot package not found, extracting from rootfs image"
-        
-        # Mount rootfs
-        sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
-            log_error "Failed to mount rootfs image"
-            return 1
-        }
-        
-        # Find kernel files
-        local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
-        local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
-        
-        if [[ -z "$vmlinuz_file" ]] || [[ -z "$initrd_file" ]]; then
-            log_error "Kernel files not found in rootfs"
-            ls -la "$ROOTFS_MOUNT_DIR/boot/"
-            sudo umount "$ROOTFS_MOUNT_DIR"
-            return 1
-        fi
-        
-        log_info "Found kernel files:"
-        echo "  - vmlinuz: $vmlinuz_file"
-        echo "  - initrd: $initrd_file"
-        
-        # Copy to boot image
-        sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
-        sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
-        
-        log_success "Kernel files copied to boot image"
-        
-        # Unmount rootfs
-        sudo umount "$ROOTFS_MOUNT_DIR"
+        log_warning "Device tree binaries not found in rootfs"
     fi
+    
+    # Copy kernel config
+    log_info "Copying kernel config..."
+    local config_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "config-*" | head -1)
+    if [[ -n "$config_file" ]]; then
+        sudo cp "$config_file" "$MOUNT_DIR/"
+        log_success "Copied kernel config: $(basename $config_file)"
+    else
+        log_warning "Kernel config not found in rootfs"
+    fi
+    
+    # Copy initrd image
+    log_info "Copying initrd image..."
+    local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
+    if [[ -n "$initrd_file" ]]; then
+        sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
+        log_success "Copied initrd image -> initramfs"
+    else
+        log_error "Initrd image not found in rootfs"
+        sudo umount "$ROOTFS_MOUNT_DIR"
+        return 1
+    fi
+    
+    # Copy vmlinuz
+    log_info "Copying vmlinuz..."
+    local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
+    if [[ -n "$vmlinuz_file" ]]; then
+        sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
+        log_success "Copied vmlinuz -> linux.efi"
+    else
+        log_error "Vmlinuz not found in rootfs"
+        sudo umount "$ROOTFS_MOUNT_DIR"
+        return 1
+    fi
+    
+    # Unmount rootfs
+    sudo umount "$ROOTFS_MOUNT_DIR"
+    
+    log_success "All kernel files copied successfully"
 }
 
 # ----------------------------- 
