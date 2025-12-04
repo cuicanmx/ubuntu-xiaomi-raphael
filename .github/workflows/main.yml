@@ -357,66 +357,88 @@ jobs:
          echo "📁 Extracting boot files..."
          
          # 查找并复制initrd.img文件
-         INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
-         if [ -n "$INITRD_FILES" ]; then
-           for initrd_file in $INITRD_FILES; do
-             if [ -f "$initrd_file" ]; then
-               filename=$(basename "$initrd_file")
-               sudo cp "$initrd_file" "boot-files/initrd.img"
-               echo "✅ Copied: $filename -> boot-files/initrd.img"
-               break  # 只取第一个匹配的文件
-             fi
-           done
-         else
-           echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
-           # 尝试在/root/chroot/boot/目录查找
-           echo "🔍 Searching in /root/chroot/boot/..."
-           INITRD_FILES=$(sudo find /mnt/rootfs/root/chroot/boot -name "initrd.img-*" 2>/dev/null || true)
-           if [ -n "$INITRD_FILES" ]; then
-             for initrd_file in $INITRD_FILES; do
-               if [ -f "$initrd_file" ]; then
-                 filename=$(basename "$initrd_file")
-                 sudo cp "$initrd_file" "boot-files/initrd.img"
-                 echo "✅ Copied: $filename -> boot-files/initrd.img"
-                 break
-               fi
-             done
-           else
-             echo "❌ No initrd.img files found in any location"
-             exit 1
-           fi
-         fi
+          echo "🔍 Searching for initrd.img files..."
+          
+          # 首先检查/boot目录
+          echo "📂 Checking /boot directory..."
+          sudo ls -la /mnt/rootfs/boot/ 2>/dev/null || echo "⚠️ /boot directory not accessible"
+          
+          INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
+          if [ -n "$INITRD_FILES" ]; then
+            for initrd_file in $INITRD_FILES; do
+              if [ -f "$initrd_file" ]; then
+                filename=$(basename "$initrd_file")
+                sudo cp "$initrd_file" "boot-files/initrd.img"
+                echo "✅ Copied: $filename -> boot-files/initrd.img"
+                break  # 只取第一个匹配的文件
+              fi
+            done
+          else
+            echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
+            
+            # 检查整个文件系统
+            echo "🔍 Searching entire filesystem for initrd files..."
+            INITRD_FILES=$(sudo find /mnt/rootfs -name "initrd.img-*" 2>/dev/null || true)
+            if [ -n "$INITRD_FILES" ]; then
+              echo "📁 Found initrd files in these locations:"
+              echo "$INITRD_FILES"
+              for initrd_file in $INITRD_FILES; do
+                if [ -f "$initrd_file" ]; then
+                  filename=$(basename "$initrd_file")
+                  sudo cp "$initrd_file" "boot-files/initrd.img"
+                  echo "✅ Copied: $filename -> boot-files/initrd.img"
+                  break
+                fi
+              done
+            else
+              echo "❌ No initrd.img files found in the entire filesystem"
+              echo "📊 Listing /mnt/rootfs directory structure..."
+              sudo ls -la /mnt/rootfs/
+              exit 1
+            fi
+          fi
          
          # 查找并复制vmlinuz文件
-         VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
-         if [ -n "$VMLINUZ_FILES" ]; then
-           for vmlinuz_file in $VMLINUZ_FILES; do
-             if [ -f "$vmlinuz_file" ]; then
-               filename=$(basename "$vmlinuz_file")
-               sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
-               echo "✅ Copied: $filename -> boot-files/vmlinuz"
-               break  # 只取第一个匹配的文件
-             fi
-           done
-         else
-           echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
-           # 尝试在/root/chroot/boot/目录查找
-           echo "🔍 Searching in /root/chroot/boot/..."
-           VMLINUZ_FILES=$(sudo find /mnt/rootfs/root/chroot/boot -name "vmlinuz-*" 2>/dev/null || true)
-           if [ -n "$VMLINUZ_FILES" ]; then
-             for vmlinuz_file in $VMLINUZ_FILES; do
-               if [ -f "$vmlinuz_file" ]; then
-                 filename=$(basename "$vmlinuz_file")
-                 sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
-                 echo "✅ Copied: $filename -> boot-files/vmlinuz"
-                 break
-               fi
-             done
-           else
-             echo "❌ No vmlinuz files found in any location"
-             exit 1
-           fi
-         fi
+          echo "🔍 Searching for vmlinuz files..."
+          
+          # 首先检查/boot目录
+          echo "📂 Checking /boot directory for vmlinuz..."
+          sudo ls -la /mnt/rootfs/boot/ 2>/dev/null || echo "⚠️ /boot directory not accessible"
+          
+          VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
+          if [ -n "$VMLINUZ_FILES" ]; then
+            for vmlinuz_file in $VMLINUZ_FILES; do
+              if [ -f "$vmlinuz_file" ]; then
+                filename=$(basename "$vmlinuz_file")
+                sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
+                echo "✅ Copied: $filename -> boot-files/vmlinuz"
+                break  # 只取第一个匹配的文件
+              fi
+            done
+          else
+            echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
+            
+            # 检查整个文件系统
+            echo "🔍 Searching entire filesystem for vmlinuz files..."
+            VMLINUZ_FILES=$(sudo find /mnt/rootfs -name "vmlinuz-*" 2>/dev/null || true)
+            if [ -n "$VMLINUZ_FILES" ]; then
+              echo "📁 Found vmlinuz files in these locations:"
+              echo "$VMLINUZ_FILES"
+              for vmlinuz_file in $VMLINUZ_FILES; do
+                if [ -f "$vmlinuz_file" ]; then
+                  filename=$(basename "$vmlinuz_file")
+                  sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
+                  echo "✅ Copied: $filename -> boot-files/vmlinuz"
+                  break
+                fi
+              done
+            else
+              echo "❌ No vmlinuz files found in the entire filesystem"
+              echo "📊 Listing /mnt/rootfs directory structure..."
+              sudo ls -la /mnt/rootfs/
+              exit 1
+            fi
+          fi
          
          # 验证提取的文件
          echo "🔍 Verifying extracted files..."
