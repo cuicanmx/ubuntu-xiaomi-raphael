@@ -13,7 +13,7 @@ source "${SCRIPT_DIR}/build-config.sh"
 
 # Rootfs configuration
 ROOTFS_SIZE="6G"
-ROOTFS_IMG="root-${DISTRO}-${KERNEL_VERSION}.img"
+ROOTFS_IMG="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
 ROOTDIR="rootdir"
 
 # Ubuntu version information

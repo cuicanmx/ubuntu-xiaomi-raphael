@@ -249,14 +249,14 @@ jobs:
          echo "🔍 Validating rootfs build artifacts..."
          
          # Check if rootfs image was created
-         if [ ! -f "root-*.img" ]; then
-           echo "❌ Missing rootfs image file"
+         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+         if [ ! -f "$ROOTFS_IMAGE" ]; then
+           echo "❌ Missing rootfs image file: $ROOTFS_IMAGE"
+           echo "📁 Available files:"
            ls -la *.img || echo "No image files found"
            exit 1
          fi
          
-         # Check image file size and integrity
-         ROOTFS_IMAGE=$(ls root-*.img | head -1)
          echo "📁 RootFS image: $ROOTFS_IMAGE"
          ls -lh "$ROOTFS_IMAGE"
          
@@ -297,9 +297,9 @@ jobs:
            done
            
            # Check kernel modules
-           if ls /mnt/rootfs/lib/modules/${{ env.KERNEL_VERSION }}* 1> /dev/null 2>&1; then
+           if ls /mnt/rootfs/lib/modules/$KERNEL_VERSION* 1> /dev/null 2>&1; then
              echo "✅ Kernel modules installed:"
-             ls -la /mnt/rootfs/lib/modules/${{ env.KERNEL_VERSION }}*
+             ls -la /mnt/rootfs/lib/modules/$KERNEL_VERSION*
            else
              echo "❌ Kernel modules not found"
            fi
@@ -319,7 +319,7 @@ jobs:
     - name: Compress rootfs image to zip
       run: |
          echo "🗜️ Compressing rootfs image to zip..."
-         ROOTFS_IMAGE=$(ls root-*.img | head -1)
+         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
          ZIP_NAME="${ROOTFS_IMAGE%.img}.zip"
          
          # 压缩镜像文件
@@ -333,8 +333,8 @@ jobs:
       with:
          name: xiaomi-raphael-rootfs_${{ github.event.inputs.distribution }}_${{ github.event.inputs.kernel_version }}
          path: |
-           root-*.img
-           root-*.zip
+           root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+           root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
          retention-days: 30
 
   release:
@@ -395,7 +395,7 @@ jobs:
           - Desktop Environment: ${{ github.event.inputs.desktop_environment }}
           
         files: |
-          rootfs-images/*.img
-          rootfs-images/*.zip
+          rootfs-images/root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          rootfs-images/root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
         draft: false
         prerelease: false
