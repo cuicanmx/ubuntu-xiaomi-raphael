@@ -532,6 +532,7 @@ main() {
     configure_kernel
     build_kernel
     create_kernel_package
+    create_compressed_archive
     
     local total_time=$(( $(date +%s) - BUILD_START_TIME ))
     log_success "Kernel build completed in ${total_time}s"
