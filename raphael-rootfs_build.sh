@@ -13,6 +13,11 @@ source "${SCRIPT_DIR}/build-config.sh"
 
 # Rootfs configuration
 ROOTFS_SIZE="6G"
+
+# Set default values if environment variables are not provided
+DISTRIBUTION="${DISTRIBUTION:-ubuntu}"
+KERNEL_VERSION="${KERNEL_VERSION:-6.18}"
+
 ROOTFS_IMG="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
 ROOTDIR="rootdir"
 
