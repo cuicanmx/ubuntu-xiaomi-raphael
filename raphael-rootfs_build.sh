@@ -126,9 +126,40 @@ main() {
     
     # Install kernel packages with proper path
     log_info "Installing kernel packages..."
-    chroot "$ROOTDIR" dpkg -i /tmp/linux-xiaomi-raphael_*.deb
-    chroot "$ROOTDIR" dpkg -i /tmp/firmware-xiaomi-raphael_*.deb
-    chroot "$ROOTDIR" dpkg -i /tmp/alsa-xiaomi-raphael_*.deb
+    
+    # Install specific arm64 packages using exact filenames
+    log_info "Installing kernel packages with exact filenames..."
+    
+    # Find the exact arm64 package filenames in chroot
+    LINUX_PKG=$(chroot "$ROOTDIR" find /tmp -name "linux-xiaomi-raphael_*_arm64.deb" -type f | head -1)
+    FIRMWARE_PKG=$(chroot "$ROOTDIR" find /tmp -name "firmware-xiaomi-raphael_*_arm64.deb" -type f | head -1)
+    ALSA_PKG=$(chroot "$ROOTDIR" find /tmp -name "alsa-xiaomi-raphael_*_arm64.deb" -type f | head -1)
+    
+    # Install packages with exact filenames
+    if [ -n "$LINUX_PKG" ]; then
+        chroot "$ROOTDIR" dpkg -i "$LINUX_PKG"
+    else
+        echo "❌ Linux kernel package not found"
+        exit 1
+    fi
+    
+    if [ -n "$FIRMWARE_PKG" ]; then
+        chroot "$ROOTDIR" dpkg -i "$FIRMWARE_PKG"
+    else
+        echo "❌ Firmware package not found"
+        exit 1
+    fi
+    
+    if [ -n "$ALSA_PKG" ]; then
+        chroot "$ROOTDIR" dpkg -i "$ALSA_PKG"
+    else
+        echo "❌ ALSA package not found"
+        exit 1
+    fi
+    
+    # Verify kernel installation
+    log_info "Verifying kernel package installation..."
+    chroot "$ROOTDIR" dpkg -l | grep xiaomi-raphael || echo "No xiaomi-raphael packages installed"
     
     # Clean up
     rm -f "$ROOTDIR/tmp/*-xiaomi-raphael*.deb"
