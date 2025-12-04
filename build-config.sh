@@ -122,6 +122,12 @@ dependency_check_rootfs_build() {
 # 验证发行版
 validate_distribution() {
     local distribution="$1"
+    local supported=false
+    
+    # 检查发行版是否在支持列表中
+    for supported_distro in "${SUPPORTED_DISTRIBUTIONS[@]}"; do
+        if [[ "$distribution" == "$supported_distro" ]]; then
+            supported=true
             break
         fi
     done
@@ -159,7 +165,7 @@ get_ubuntu_url() {
     local arch="$2"
     
     # 生成Ubuntu基础下载URL
-    local url="${UBUNTU_DOWNLOAD_BASE}/${version}/release/${UBUNTU_IMAGE_TYPE}-${version}-base-${arch}.tar.gz"
+    local url="${UBUNTU_DOWNLOAD_BASE}/${version}/release/ubuntu-base-${version}-base-${arch}.tar.gz"
     echo "$url"
 }
 
@@ -256,6 +262,5 @@ check_status() {
 # 加载时验证关键配置
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     # 此文件正在被引用，执行基本验证
-    validate_github_repo "${GITHUB_REPO}" || true
     validate_kernel_version "${KERNEL_VERSION_DEFAULT}" || true
 fi
