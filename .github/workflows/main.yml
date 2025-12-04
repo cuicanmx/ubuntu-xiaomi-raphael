@@ -188,23 +188,6 @@ jobs:
           fi
         done
 
-    - name: Cache rootfs build
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache
-          ~/.cache/debootstrap
-          ~/.cache/apt-cacher-ng
-          rootfs-build/
-          /var/cache/apt
-          /var/lib/apt
-          ${{ github.workspace }}/kernel-packages
-        key: ${{ runner.os }}-rootfs-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('raphael-rootfs_build.sh', 'build-config.sh') }}
-        restore-keys: |
-          ${{ runner.os }}-rootfs-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}
-          ${{ runner.os }}-rootfs-${{ github.event.inputs.distribution }}
-          ${{ runner.os }}-rootfs-
-
     - name: Install Dependencies
       run: |
          echo "📦 Installing rootfs build dependencies..."

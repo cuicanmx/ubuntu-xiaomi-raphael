@@ -23,11 +23,6 @@ jobs:
       name: Build Kernel Packages
       runs-on: ubuntu-24.04-arm
       env:
-        CCACHE_DIR: ${{ github.workspace }}/.ccache
-        CCACHE_MAXSIZE: 5G
-        CCACHE_COMPILERCHECK: content
-        CCACHE_COMPRESS: true
-        CCACHE_SLOPPINESS: file_macro,locale,time_stamp
         ARCH: arm64
       
       steps:
@@ -52,73 +47,9 @@ jobs:
             u-boot-tools \
             dpkg-dev \
             debhelper \
-            fakeroot \
-            ccache
+            fakeroot
           
           echo "✅ Dependencies installed successfully"
-
-      - name: Cache build dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/apt
-            /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-${{ hashFiles('**/raphael-kernel_build.sh', '**/build-config.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-${{ hashFiles('**/raphael-kernel_build.sh') }}
-            ${{ runner.os }}-apt-
-            
-      - name: Cache kernel build artifacts
-        uses: actions/cache@v3
-        with:
-          path: |
-            output/
-          key: kernel-artifacts-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh', '**/build-config.sh', '**/DEBIAN/control') }}
-          restore-keys: |
-            kernel-artifacts-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}
-            kernel-artifacts-${{ runner.os }}-${{ env.ARCH }}
-
-      - name: Restore ccache cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh', '**/build-config.sh', '**/DEBIAN/control') }}
-          restore-keys: |
-            kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}
-            kernel-ccache-${{ runner.os }}-${{ env.ARCH }}
-            
-      - name: Configure ccache
-        run: |
-          echo "🔧 Configuring ccache using example.yml best practices..."
-          mkdir -p ${{ env.CCACHE_DIR }}
-          
-          # Create ccache configuration file (more reliable than command-line options)
-          echo "max_size = ${{ env.CCACHE_MAXSIZE }}" > ${{ env.CCACHE_DIR }}/ccache.conf
-          echo "compiler_check = ${{ env.CCACHE_COMPILERCHECK }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
-          echo "compression = ${{ env.CCACHE_COMPRESS }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
-          echo "sloppiness = ${{ env.CCACHE_SLOPPINESS }}" >> ${{ env.CCACHE_DIR }}/ccache.conf
-          
-          # Create cross-compiler symlinks for ccache
-          mkdir -p ${{ env.CCACHE_DIR }}/bin
-          for c in aarch64-linux-gnu-gcc aarch64-linux-gnu-g++; do
-            ln -sf $(which ccache) ${{ env.CCACHE_DIR }}/bin/$c
-          done
-          
-          # Update PATH to prioritize ccache wrapper
-          echo "PATH=${{ env.CCACHE_DIR }}/bin:$PATH" >> $GITHUB_ENV
-          
-          # Ensure proper permissions
-          chmod -R 777 ${{ env.CCACHE_DIR }}
-          
-          # Show ccache configuration
-          echo "📊 Current ccache configuration:"
-          ccache --show-config
-          
-          # Test ccache functionality
-          echo "🧪 Testing ccache functionality..."
-          ccache -s
-          
-          echo "✅ ccache configuration completed using best practices"
             
       - name: Build kernel packages
         run: |
@@ -131,22 +62,15 @@ jobs:
           
           # Check if output directory exists
           if [ ! -d "output/kernel" ]; then
-            echo "⚠️ Output directory not found, but continuing for cache upload"
-            # Create empty directory to avoid path issues
-            mkdir -p output/kernel
-            echo "📁 Created empty output directory for cache preservation"
+            echo "❌ Output directory not found"
+            exit 1
           else
             # List all generated files
             echo "📁 Generated files:"
             ls -la output/kernel/
           fi
           
-      - name: Show ccache statistics after build
-        run: |
-          echo "📊 ccache statistics after build:"
-          ccache -s
-          
-          # Verify DEB packages with tolerance
+          # Verify DEB packages
           if ls output/kernel/*.deb 1> /dev/null 2>&1; then
             echo "✅ Found DEB packages:"
             ls -la output/kernel/*.deb
@@ -157,8 +81,8 @@ jobs:
               dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
             done
           else
-            echo "⚠️ No DEB packages found, but continuing for cache upload"
-            echo "📝 This may indicate a partial build, but cache will be preserved"
+            echo "❌ No DEB packages found"
+            exit 1
           fi
           
           # Verify kernel image
@@ -166,7 +90,8 @@ jobs:
             echo "✅ Found kernel image: Image.gz-${{ github.event.inputs.kernel_version }}"
             file "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}"
           else
-            echo "⚠️ Kernel image not found"
+            echo "❌ Kernel image not found"
+            exit 1
           fi
           
           # Verify DTB files
@@ -177,17 +102,7 @@ jobs:
             echo "⚠️ DTB files not found"
           fi
           
-          # Create build status file for debugging
-          echo "📝 Creating build status file..."
-          echo "Build completed at: $(date)" > build-status.txt
-          echo "Kernel version: ${{ github.event.inputs.kernel_version }}" >> build-status.txt
-          echo "DEB packages found: $(ls output/kernel/*.deb 2>/dev/null | wc -l)" >> build-status.txt
-          echo "Kernel image found: $([ -f \"output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}\" ] && echo \"yes\" || echo \"no\")" >> build-status.txt
-          echo "DTB files found: $(ls output/kernel/dtbs/sm8150-*.dtb 2>/dev/null | wc -l)" >> build-status.txt
-          
-          # Always exit with success to ensure cache upload
-          echo "✅ Build verification completed (always successful for cache preservation)"
-          exit 0
+          echo "✅ Build verification completed"
           
       - name: Upload kernel packages to GitHub Release
         uses: softprops/action-gh-release@v1
@@ -240,10 +155,3 @@ jobs:
             output/kernel/kernel-*.zip
           draft: false
           prerelease: false
-          
-      - name: Save ccache cache
-        if: always()  # Always save cache even if build fails
-        uses: actions/cache/save@v3
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh', '**/build-config.sh', '**/DEBIAN/control') }}

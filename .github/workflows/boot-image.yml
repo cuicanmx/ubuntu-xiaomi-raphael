@@ -32,19 +32,6 @@ jobs:
       run: |
         echo "🔧 Creating boot image for $DISTRO with kernel $KERNEL_VERSION"
         echo "🏷️ Release tag: $RELEASE_TAG"
-        
-    - name: Cache build components
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache
-          ./boot-image-build
-          ./rootfs-*.*
-        key: ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.distribution }}-${{ hashFiles('build-config.sh', 'raphael-boot_build.sh') }}
-        restore-keys: |
-          ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.distribution }}-
-          ${{ runner.os }}-boot-image-${{ github.event.inputs.kernel_version }}-
-          ${{ runner.os }}-boot-image-
     
     - name: Install dependencies
       run: |
