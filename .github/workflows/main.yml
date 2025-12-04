@@ -232,7 +232,7 @@ jobs:
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.event.inputs.release_tag }}
+        tag_name: ${{ env.RELEASE_TAG }}
         name: "🎯 小米 Raphael ${{ github.event.inputs.distribution }} 发行版 - 内核 ${{ github.event.inputs.kernel_version }}"
         body: |
           # 🎯 小米 Raphael (K20 Pro) ${{ github.event.inputs.distribution }} 发行版
@@ -249,7 +249,7 @@ jobs:
           ### 📊 构建详情
           - **构建日期**: ${{ github.event.repository.created_at }}
           - **构建ID**: ${{ github.run_id }}
-          - **发布标签**: ${{ github.event.inputs.release_tag }}
+          - **发布标签**: ${{ env.RELEASE_TAG }}
           
           ## 🗂️ 文件说明
           
