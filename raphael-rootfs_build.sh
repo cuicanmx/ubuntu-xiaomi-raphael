@@ -109,21 +109,44 @@ main() {
     
     # Step 12: Install custom kernel packages
     log_info "Installing custom kernel packages..."
-    # Copy kernel packages to chroot
-    cp linux-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp linux-xiaomi-raphael_*.deb rootdir/tmp/
-    cp firmware-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp firmware-xiaomi-raphael_*.deb rootdir/tmp/
-    cp alsa-xiaomi-raphael_${KERNEL_VERSION}_arm64.deb rootdir/tmp/ 2>/dev/null || cp alsa-xiaomi-raphael_*.deb rootdir/tmp/
     
-    # Install kernel packages
-    chroot rootdir dpkg -i /tmp/linux-xiaomi-raphael*.deb
-    chroot rootdir dpkg -i /tmp/firmware-xiaomi-raphael*.deb
-    chroot rootdir dpkg -i /tmp/alsa-xiaomi-raphael*.deb
+    # List available kernel packages before copying
+    log_info "Available kernel packages in current directory:"
+    ls -la *.deb 2>/dev/null || echo "No .deb files found"
+    
+    # Copy kernel packages to chroot with proper path
+    log_info "Copying kernel packages to chroot..."
+    cp linux-xiaomi-raphael_*.deb "$ROOTDIR/tmp/" 2>/dev/null || (echo "❌ Failed to copy linux package" && exit 1)
+    cp firmware-xiaomi-raphael_*.deb "$ROOTDIR/tmp/" 2>/dev/null || (echo "❌ Failed to copy firmware package" && exit 1)
+    cp alsa-xiaomi-raphael_*.deb "$ROOTDIR/tmp/" 2>/dev/null || (echo "❌ Failed to copy alsa package" && exit 1)
+    
+    # Verify packages were copied successfully
+    log_info "Verifying packages in chroot tmp directory:"
+    chroot "$ROOTDIR" ls -la /tmp/ | grep -i xiaomi || echo "No kernel packages found in chroot"
+    
+    # Install kernel packages with proper path
+    log_info "Installing kernel packages..."
+    chroot "$ROOTDIR" dpkg -i /tmp/linux-xiaomi-raphael_*.deb
+    chroot "$ROOTDIR" dpkg -i /tmp/firmware-xiaomi-raphael_*.deb
+    chroot "$ROOTDIR" dpkg -i /tmp/alsa-xiaomi-raphael_*.deb
     
     # Clean up
-    rm rootdir/tmp/*-xiaomi-raphael*.deb
+    rm -f "$ROOTDIR/tmp/*-xiaomi-raphael*.deb"
     
-    # Step 13: Update initramfs
+    # Step 13: Verify kernel installation and update initramfs
+    log_info "Verifying kernel installation..."
+    chroot "$ROOTDIR" dpkg -l | grep -i linux || echo "No kernel packages found"
+    
+    log_info "Checking /boot directory structure..."
+    chroot "$ROOTDIR" ls -la /boot/ || echo "Boot directory not accessible"
+    
+    log_info "Updating initramfs..."
     chroot "$ROOTDIR" update-initramfs -c -k all
+    
+    # Verify initramfs was created
+    log_info "Verifying initramfs creation..."
+    chroot "$ROOTDIR" ls -la /boot/ | grep -i initrd || echo "No initrd files found"
+    chroot "$ROOTDIR" ls -la /boot/ | grep -i vmlinuz || echo "No vmlinuz files found"
     
     # Step 14: Install EFI bootloader
     log_info "Installing EFI bootloader..."
