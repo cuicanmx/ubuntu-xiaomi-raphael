@@ -33,13 +33,12 @@ on:
           - jammy
           - focal
       kernel_source:
-      description: 'Source of kernel packages (release only)'
-      required: true
-      default: 'release'
-      type: choice
-      options:
-      - release
-      default: release
+        description: 'Source of kernel packages (release only)'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
       desktop_environment:
         description: 'Desktop environment to install (only for ubuntu)'
         required: false
