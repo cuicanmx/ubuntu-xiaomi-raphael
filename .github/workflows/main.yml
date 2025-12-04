@@ -86,7 +86,6 @@ jobs:
         fi
          
     - name: Download kernel packages from GitHub Release
-      if: ${{ github.event.inputs.kernel_source == 'release' }}
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -95,22 +94,25 @@ jobs:
         # Download compressed kernel archive only
         echo "🔍 Downloading compressed kernel archive..."
         gh release download $RELEASE_TAG \
-          --pattern "kernel-${KERNEL_VERSION}-raphael.tar.gz" \
-          --pattern "kernel-${KERNEL_VERSION}-raphael.zip" \
+          --pattern "kernel-*-raphael.tar.gz" \
+          --pattern "kernel-*-raphael.zip" \
           --repo ${{ github.repository }}
         
         # Extract the compressed archive
-        if [ -f "kernel-${KERNEL_VERSION}-raphael.tar.gz" ]; then
-          echo "📦 Extracting tar.gz archive..."
-          tar -xzf "kernel-${KERNEL_VERSION}-raphael.tar.gz"
+        tar_file=$(find . -name "kernel-*-raphael.tar.gz" -type f | head -1)
+        zip_file=$(find . -name "kernel-*-raphael.zip" -type f | head -1)
+        
+        if [ -f "$tar_file" ]; then
+          echo "📦 Extracting tar.gz archive: $tar_file"
+          tar -xzf "$tar_file"
           echo "✅ tar.gz archive extracted successfully"
-        elif [ -f "kernel-${KERNEL_VERSION}-raphael.zip" ]; then
-          echo "📦 Extracting zip archive..."
-          unzip -q "kernel-${KERNEL_VERSION}-raphael.zip"
+        elif [ -f "$zip_file" ]; then
+          echo "📦 Extracting zip archive: $zip_file"
+          unzip -q "$zip_file"
           echo "✅ zip archive extracted successfully"
         else
-          echo "❌ No compressed kernel archive found for version $KERNEL_VERSION"
-          echo "� Available files in release:"
+          echo "❌ No compressed kernel archive found"
+          echo "📦 Available files in release:"
           gh release view $RELEASE_TAG --repo ${{ github.repository }} --json assets --jq '.assets[].name'
           exit 1
         fi
@@ -139,7 +141,7 @@ jobs:
         done
         
     # 删除artifacts获取方式，只保留GitHub Releases作为内核包来源
-    - name: Download kernel packages from GitHub Actions Artifacts
+    - name: Install rootfs build dependencies
       run: |
          echo "📦 Installing rootfs build dependencies..."
          sudo apt update
