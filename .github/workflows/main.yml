@@ -336,71 +336,110 @@ jobs:
          # 创建boot文件目录
          mkdir -p boot-files
          
-         # 挂载rootfs镜像提取文件
-         sudo kpartx -a "$ROOTFS_IMAGE"
-         sleep 2
+         # 直接挂载rootfs镜像（非分区镜像）
+         echo "📂 Mounting rootfs image directly..."
+         sudo mkdir -p /mnt/rootfs
+         sudo mount -o loop "$ROOTFS_IMAGE" /mnt/rootfs
          
-         # 检查根分区是否存在
-         if [ -b /dev/mapper/loop0p2 ]; then
-           echo "✅ Root partition found, mounting..."
-           
-           # 挂载根分区
-           sudo mkdir -p /mnt/rootfs
-           sudo mount /dev/mapper/loop0p2 /mnt/rootfs
-           
-           # 提取UUID信息
-           echo "📝 Extracting UUID information..."
-           ROOT_UUID=$(sudo blkid -s UUID -o value /dev/mapper/loop0p2)
-           echo "Root Partition UUID: $ROOT_UUID"
+         # 提取UUID信息
+         echo "📝 Extracting UUID information..."
+         ROOT_UUID=$(sudo blkid -s UUID -o value "$ROOTFS_IMAGE")
+         if [ -n "$ROOT_UUID" ]; then
+           echo "Root Filesystem UUID: $ROOT_UUID"
            echo "$ROOT_UUID" > boot-files/rootfs-uuid.txt
-           
-           # 提取boot文件
-           echo "📁 Extracting boot files..."
-           
-           # 查找并复制initrd.img文件
-           INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
+           echo "✅ UUID extracted successfully"
+         else
+           echo "❌ Failed to extract UUID from rootfs image"
+           exit 1
+         fi
+         
+         # 提取boot文件
+         echo "📁 Extracting boot files..."
+         
+         # 查找并复制initrd.img文件
+         INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
+         if [ -n "$INITRD_FILES" ]; then
+           for initrd_file in $INITRD_FILES; do
+             if [ -f "$initrd_file" ]; then
+               filename=$(basename "$initrd_file")
+               sudo cp "$initrd_file" "boot-files/initrd.img"
+               echo "✅ Copied: $filename -> boot-files/initrd.img"
+               break  # 只取第一个匹配的文件
+             fi
+           done
+         else
+           echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
+           # 尝试在/root/chroot/boot/目录查找
+           echo "🔍 Searching in /root/chroot/boot/..."
+           INITRD_FILES=$(sudo find /mnt/rootfs/root/chroot/boot -name "initrd.img-*" 2>/dev/null || true)
            if [ -n "$INITRD_FILES" ]; then
              for initrd_file in $INITRD_FILES; do
                if [ -f "$initrd_file" ]; then
                  filename=$(basename "$initrd_file")
                  sudo cp "$initrd_file" "boot-files/initrd.img"
                  echo "✅ Copied: $filename -> boot-files/initrd.img"
-                 break  # 只取第一个匹配的文件
+                 break
                fi
              done
            else
-             echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
+             echo "❌ No initrd.img files found in any location"
+             exit 1
            fi
-           
-           # 查找并复制vmlinuz文件
-           VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
+         fi
+         
+         # 查找并复制vmlinuz文件
+         VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
+         if [ -n "$VMLINUZ_FILES" ]; then
+           for vmlinuz_file in $VMLINUZ_FILES; do
+             if [ -f "$vmlinuz_file" ]; then
+               filename=$(basename "$vmlinuz_file")
+               sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
+               echo "✅ Copied: $filename -> boot-files/vmlinuz"
+               break  # 只取第一个匹配的文件
+             fi
+           done
+         else
+           echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
+           # 尝试在/root/chroot/boot/目录查找
+           echo "🔍 Searching in /root/chroot/boot/..."
+           VMLINUZ_FILES=$(sudo find /mnt/rootfs/root/chroot/boot -name "vmlinuz-*" 2>/dev/null || true)
            if [ -n "$VMLINUZ_FILES" ]; then
              for vmlinuz_file in $VMLINUZ_FILES; do
                if [ -f "$vmlinuz_file" ]; then
                  filename=$(basename "$vmlinuz_file")
                  sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
                  echo "✅ Copied: $filename -> boot-files/vmlinuz"
-                 break  # 只取第一个匹配的文件
+                 break
                fi
              done
            else
-             echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
+             echo "❌ No vmlinuz files found in any location"
+             exit 1
            fi
-           
-           # 验证提取的文件
-           echo "🔍 Verifying extracted files..."
-           ls -la boot-files/
-           
-           # 卸载并清理
-           sudo umount /mnt/rootfs
-           sudo rmdir /mnt/rootfs
-         else
-           echo "❌ Could not find root partition"
-           exit 1
          fi
          
-         # 清理loop设备
-         sudo kpartx -d "$ROOTFS_IMAGE"
+         # 验证提取的文件
+         echo "🔍 Verifying extracted files..."
+         ls -la boot-files/
+         
+         # 检查文件大小和类型
+         if [ -f "boot-files/initrd.img" ]; then
+           echo "📊 initrd.img: $(ls -lh boot-files/initrd.img | cut -d' ' -f5)"
+           file "boot-files/initrd.img"
+         fi
+         
+         if [ -f "boot-files/vmlinuz" ]; then
+           echo "📊 vmlinuz: $(ls -lh boot-files/vmlinuz | cut -d' ' -f5)"
+           file "boot-files/vmlinuz"
+         fi
+         
+         if [ -f "boot-files/rootfs-uuid.txt" ]; then
+           echo "📄 UUID: $(cat boot-files/rootfs-uuid.txt)"
+         fi
+         
+         # 卸载并清理
+         sudo umount /mnt/rootfs
+         sudo rmdir /mnt/rootfs
          
          echo "✅ UUID and boot files extraction completed"
 
