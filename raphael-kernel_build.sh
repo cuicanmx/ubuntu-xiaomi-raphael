@@ -1,196 +1,82 @@
 #!/bin/bash
 
 # 小米K20 Pro (Raphael) 内核构建脚本
-# 标准化实现，使用集中式配置
+# Optimized for GitHub Actions environment
 
-set -e  # 任何错误时退出
-set -o pipefail  # 管道失败时退出
+set -e
+set -o pipefail
 
-# ----------------------------- 
-# 错误处理和恢复
-# ----------------------------- 
-# 具有严重性级别的增强错误处理
+# Error handling
 handle_error() {
     local exit_code=$?
     local line_number=$1
     local function_name=$2
-    local error_level="${3:-fatal}"  # 如果未指定，默认为致命错误
     
-    case $error_level in
-        "fatal")
-            log_error "❌ 致命错误发生在函数 '$function_name' 的第 $line_number 行 (退出代码: $exit_code)"
-            
-            # 显示当前目录和环境信息用于调试
-            log_info "📁 当前目录: $(pwd)"
-            log_info "🔧 环境变量:"
-            env | grep -E "(CCACHE|ARCH|CROSS_COMPILE|KERNEL)" || true
-            
-            # 在退出前尝试清理
-            cleanup
-            
-            exit $exit_code
-            ;;
-        "nonfatal")
-            log_warning "⚠️ 非致命错误发生在函数 '$function_name' 的第 $line_number 行 (退出代码: $exit_code)"
-            log_info "📝 尽管有错误，继续构建过程..."
-            return 0  # 继续执行
-            ;;
-        *)
-            log_error "❌ 未知错误级别: $error_level"
-            exit 1
-            ;;
-    esac
+    echo "[ERROR] Error in function '$function_name' at line $line_number (exit code: $exit_code)"
+    cleanup
+    exit $exit_code
 }
 
-# 特定命令的增强错误处理
-safe_execute() {
-    local command="$1"
-    local error_level="${2:-fatal}"
-    
-    log_info "🔧 执行: $command"
-    
-    if eval "$command"; then
-        log_success "✅ 命令执行成功"
-        return 0
-    else
-        local exit_code=$?
-        log_warning "⚠️ 命令执行失败，退出代码: $exit_code"
-        
-        if [ "$error_level" = "nonfatal" ]; then
-            log_info "📝 非致命错误，继续..."
-            return $exit_code
-        else
-            log_error "❌ 致命错误，终止构建"
-            exit $exit_code
-        fi
-    fi
-}
+trap 'handle_error $LINENO ${FUNCNAME[0]:-main}' ERR
 
-# 为ERR信号设置陷阱，使用增强错误处理
-trap 'handle_error $LINENO ${FUNCNAME[0]:-main} fatal' ERR
-
-# ----------------------------- 
-# 加载集中式配置
-# ----------------------------- 
-if [ -f "build-config.sh" ]; then
-    source "build-config.sh"
-else
-    echo "❌ 错误: build-config.sh 未找到!"
+# Load configuration
+[ -f "build-config.sh" ] && source "build-config.sh" || {
+    echo "[ERROR] build-config.sh not found!"
     exit 1
-fi
+}
 
-# ----------------------------- 
-# 彩色输出函数
-# ----------------------------- 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # 无颜色
-
+# Log functions
 log_info() {
-    echo -e "${BLUE}[信息]${NC} $1"
+    echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
 log_success() {
-    echo -e "${GREEN}[成功]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[警告]${NC} $1"
+    echo "[SUCCESS] $1"
 }
 
 log_error() {
-    echo -e "${RED}[错误]${NC} $1"
+    echo "[ERROR] $1"
 }
 
-# ----------------------------- 
-# 清理函数
-# ----------------------------- 
+# Cleanup function
 cleanup() {
-    log_info "正在清理临时目录..."
-    
-    # 清理临时文件和目录，带有错误处理
-    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-        log_info "删除临时目录: $TEMP_DIR"
-        rm -rf "$TEMP_DIR" 2>/dev/null || {
-            log_warning "删除临时目录失败: $TEMP_DIR"
-            # 如果有权限问题，尝试使用sudo
-            sudo rm -rf "$TEMP_DIR" 2>/dev/null || log_warning "即使使用sudo也无法删除临时目录"
-        }
-    else
-        log_info "没有临时目录需要清理"
-    fi
-    
-    log_success "清理完成"
+    [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR" 2>/dev/null
 }
 
-# ----------------------------- 
-# 错误处理设置
-# ----------------------------- 
 trap cleanup EXIT
 
-# ----------------------------- 
-# 参数解析
-# ----------------------------- 
+# Parse arguments
 parse_arguments() {
-    log_info "正在解析命令行参数..."
-    
-    # 从环境变量或集中式配置设置默认值
     KERNEL_VERSION="${KERNEL_VERSION:-${KERNEL_VERSION_DEFAULT}}"
     CACHE_ENABLED="${CACHE_ENABLED:-${CACHE_ENABLED_DEFAULT:-false}}"
     
-    # 如果只有一个参数且不是选项，将其视为内核版本
-    if [[ $# -eq 1 && ! "$1" =~ ^- ]]; then
-        KERNEL_VERSION="$1"
-        shift 1
-    fi
+    [[ $# -eq 1 && ! "$1" =~ ^- ]] && KERNEL_VERSION="$1" && shift 1
     
     while [[ $# -gt 0 ]]; do
         case $1 in
-            -v|--version)
-                KERNEL_VERSION="$2"
-                shift 2
-                ;;
-            --cache)
-                CACHE_ENABLED="true"
-                shift 1
-                ;;
-            --no-cache)
-                CACHE_ENABLED="false"
-                shift 1
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                log_error "未知选项: $1"
-                show_help
-                exit 1
-                ;;
+            -v|--version) KERNEL_VERSION="$2"; shift 2 ;;
+            --cache) CACHE_ENABLED="true"; shift 1 ;;
+            --no-cache) CACHE_ENABLED="false"; shift 1 ;;
+            -h|--help) show_help; exit 0 ;;
+            *) log_error "Unknown option: $1"; show_help; exit 1 ;;
         esac
     done
-    
-    log_success "参数解析成功"
 }
 
-# ----------------------------- 
-# 显示帮助信息
-# ----------------------------- 
+# Show help
 show_help() {
     cat << EOF
-用法: $0 [选项]
+Usage: $0 [OPTIONS]
 
-为小米K20 Pro (Raphael) 构建内核
+Build kernel for Xiaomi K20 Pro (Raphael)
 
-选项:
-    -v, --version 版本        内核版本 (例如: 6.18) [默认: ${KERNEL_VERSION_DEFAULT}]
-    --cache                   启用构建缓存
-    --no-cache                禁用构建缓存 [默认: ${CACHE_ENABLED_DEFAULT:-false}]
-    -h, --help                显示此帮助信息
+OPTIONS:
+    -v, --version VERSION    Kernel version (e.g., 6.18) [default: ${KERNEL_VERSION_DEFAULT}]
+    --cache                  Enable build cache
+    --no-cache               Disable build cache [default: ${CACHE_ENABLED_DEFAULT:-false}]
+    -h, --help               Show this help message
 
-示例:
+EXAMPLES:
     $0 --version 6.18 --cache
 EOF
 }
@@ -628,181 +514,28 @@ create_kernel_package() {
     log_info "📦 ALSA package: ${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}_arm64.deb"
 }
 
-# ----------------------------- 
-# Build status monitoring and error tolerance
-# ----------------------------- 
+# Build status tracking
 BUILD_START_TIME=$(date +%s)
-BUILD_STEPS=("参数解析" "参数验证" "依赖检查" "源码克隆" "内核配置" "内核编译" "包创建" "创建压缩包")
-BUILD_STEP_COUNT=${#BUILD_STEPS[@]}
-CURRENT_STEP=0
-BUILD_STATUS="in_progress"
 
-# Enhanced build status reporting with error tolerance
-report_build_status() {
-    local step_name="$1"
-    local status="$2"
-    local message="$3"
-    
-    CURRENT_STEP=$((CURRENT_STEP + 1))
-    local progress=$((CURRENT_STEP * 100 / BUILD_STEP_COUNT))
-    local elapsed_time=$(( $(date +%s) - BUILD_START_TIME ))
-    
-    case $status in
-        "start")
-            log_info "🚀 [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 开始: $step_name"
-            ;;
-        "success") 
-            log_success "✅ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 完成: $step_name (耗时: ${elapsed_time}s)"
-            ;;
-        "warning")
-            log_warning "⚠️ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 警告: $step_name - $message"
-            BUILD_STATUS="partial_success"
-            ;;
-        "error")
-            log_error "❌ [$CURRENT_STEP/$BUILD_STEP_COUNT] ($progress%) 错误: $step_name - $message"
-            BUILD_STATUS="partial_success"
-            ;;
-    esac
-    
-    # Update build status file for GitHub Actions
-    update_build_status_file
-}
-
-# Create build status file for debugging and monitoring
-update_build_status_file() {
-    local status_file="${OUTPUT_DIR}/build-status.txt"
-    
-    mkdir -p "${OUTPUT_DIR}"
-    
-    cat > "$status_file" << EOF
-Build Status: $BUILD_STATUS
-Current Step: $CURRENT_STEP/$BUILD_STEP_COUNT
-Progress: $((CURRENT_STEP * 100 / BUILD_STEP_COUNT))%
-Elapsed Time: $(( $(date +%s) - BUILD_START_TIME ))s
-Kernel Version: $KERNEL_VERSION
-Build Started: $(date -d @$BUILD_START_TIME)
-Last Updated: $(date)
-
-Generated Files:
-- DEB Packages: $(ls "${OUTPUT_DIR}"/*.deb 2>/dev/null | wc -l)
-- Kernel Image: $([ -f "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}" ] && echo "yes" || echo "no")
-- DTB Files: $(ls "${OUTPUT_DIR}/dtbs/"*.dtb 2>/dev/null | wc -l)
-
-Cache Information:
-- CCACHE Enabled: $CACHE_ENABLED
-- CCACHE Directory: $CCACHE_DIR
-EOF
-    
-    # Add detailed file list if available
-    if [ -d "${OUTPUT_DIR}" ]; then
-        echo "" >> "$status_file"
-        echo "File Listing:" >> "$status_file"
-        ls -la "${OUTPUT_DIR}"/* 2>/dev/null >> "$status_file" || true
-    fi
-}
-
-# ----------------------------- 
 # Main function
-# ----------------------------- 
 main() {
-    log_info "🚀 Starting kernel build process..."
-    log_info "📊 Build configuration:"
-    log_info "   - Target: Xiaomi K20 Pro (Raphael)"
-    log_info "   - Architecture: ARM64"
-    log_info "   - Build started at: $(date)"
+    log_info "Starting kernel build for Xiaomi K20 Pro (Raphael)"
     
-    # Show initial ccache status if cache is enabled or in GitHub Actions environment
-    if [ "$CACHE_ENABLED" = "true" ] || [ -n "$GITHUB_ACTIONS" ]; then
-        if command -v ccache >/dev/null 2>&1; then
-            log_info "🔧 ccache status (GitHub Actions environment):"
-            log_info "📁 ccache directory: $CCACHE_DIR"
-            ccache -s 2>/dev/null || log_warning "⚠️ Could not get ccache status"
-            
-            # Check if ccache directory is accessible
-            if [ -n "$CCACHE_DIR" ] && [ -d "$CCACHE_DIR" ]; then
-                log_info "📁 ccache directory: $CCACHE_DIR (accessible)"
-            else
-                log_warning "⚠️ ccache directory not accessible"
-            fi
-        else
-            log_warning "⚠️ ccache command not found in PATH"
-        fi
-    else
-        log_info "🔧 Building without ccache (cache disabled)"
-    fi
-    
-    # Parse command-line arguments
-    report_build_status "${BUILD_STEPS[0]}" "start"
     parse_arguments "$@"
-    report_build_status "${BUILD_STEPS[0]}" "success"
-    
-    # Validate parameters
-    report_build_status "${BUILD_STEPS[1]}" "start"
     validate_parameters
-    report_build_status "${BUILD_STEPS[1]}" "success"
-    
-    # Check dependencies
-    report_build_status "${BUILD_STEPS[2]}" "start"
     check_dependencies
-    report_build_status "${BUILD_STEPS[2]}" "success"
-    
-    # Clone kernel source
-    report_build_status "${BUILD_STEPS[3]}" "start"
     clone_kernel_source
-    report_build_status "${BUILD_STEPS[3]}" "success"
-    
-    # Configure kernel
-    report_build_status "${BUILD_STEPS[4]}" "start"
     configure_kernel
-    report_build_status "${BUILD_STEPS[4]}" "success"
-    
-    # Build kernel
-    report_build_status "${BUILD_STEPS[5]}" "start"
     build_kernel
-    report_build_status "${BUILD_STEPS[5]}" "success"
-    
-    # Create kernel package
-    report_build_status "${BUILD_STEPS[6]}" "start"
     create_kernel_package
-    report_build_status "${BUILD_STEPS[6]}" "success"
     
-    # Final build summary and status update
     local total_time=$(( $(date +%s) - BUILD_START_TIME ))
+    log_success "Kernel build completed in ${total_time}s"
     
-    # Set final build status
-    if [ "$BUILD_STATUS" = "in_progress" ]; then
-        BUILD_STATUS="success"
-    fi
-    
-    log_success "🎉 内核构建完成！"
-    log_info "📊 构建统计:"
-    log_info "   - 总耗时: ${total_time} 秒"
-    log_info "   - 构建状态: ${BUILD_STATUS}"
-    log_info "   - 输出目录: ${OUTPUT_DIR}"
-    log_info "   - 生成的文件:"
-    ls -la "${OUTPUT_DIR}/"
-    
-    # Show final package information
-    log_info "📦 生成的包:"
+    # Show package information
     for pkg in "${OUTPUT_DIR}"/*.deb; do
-        if [ -f "$pkg" ]; then
-            log_info "   - $(basename $pkg) ($(du -h "$pkg" | cut -f1))"
-        fi
+        [ -f "$pkg" ] && log_info "Package: $(basename $pkg) ($(du -h "$pkg" | cut -f1))"
     done
-    
-    # Create compressed archive of all build artifacts
-    report_build_status "创建压缩包" "start"
-    create_compressed_archive
-    report_build_status "创建压缩包" "success"
-    
-    # Final build status update
-    update_build_status_file
-    
-    # Show build status file content
-    if [ -f "${OUTPUT_DIR}/build-status.txt" ]; then
-        log_info "📋 构建状态报告:"
-        cat "${OUTPUT_DIR}/build-status.txt"
-    fi
 }
 
 # ----------------------------- 

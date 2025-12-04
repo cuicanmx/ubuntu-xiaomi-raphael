@@ -139,8 +139,7 @@ jobs:
         done
         
     # 删除artifacts获取方式，只保留GitHub Releases作为内核包来源
-
-    - name: Install Dependencies
+    - name: Download kernel packages from GitHub Actions Artifacts
       run: |
          echo "📦 Installing rootfs build dependencies..."
          sudo apt update
@@ -181,272 +180,117 @@ jobs:
 
     - name: Validate rootfs build artifacts
       run: |
-         echo "🔍 Validating rootfs build artifacts..."
-         
-         # Check if rootfs image was created
+         # Validate rootfs build artifacts
          ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-         if [ ! -f "$ROOTFS_IMAGE" ]; then
-           echo "❌ Missing rootfs image file: $ROOTFS_IMAGE"
-           echo "📁 Available files:"
-           ls -la *.img || echo "No image files found"
-           exit 1
-         fi
+         [ -f "$ROOTFS_IMAGE" ] || { echo "Missing rootfs image file: $ROOTFS_IMAGE"; exit 1; }
+         [ -s "$ROOTFS_IMAGE" ] || { echo "RootFS image is empty or invalid"; exit 1; }
          
-         echo "📁 RootFS image: $ROOTFS_IMAGE"
-         ls -lh "$ROOTFS_IMAGE"
-         
-         # Basic file validation
-         if [ ! -s "$ROOTFS_IMAGE" ]; then
-           echo "❌ RootFS image is empty or invalid"
-           exit 1
-         fi
-         
-         # Check file type
-         file "$ROOTFS_IMAGE" || echo "⚠️ File command not available"
-         
-         # Enhanced validation: Check partition table
-         echo "🔍 Checking partition table:"
-         sudo fdisk -l "$ROOTFS_IMAGE" || echo "⚠️ Partition table check failed"
-         
-         # Try to mount and verify content
-         echo "🔍 Verifying RootFS content..."
+         # Mount and verify content
          sudo kpartx -a "$ROOTFS_IMAGE"
          sleep 2
          
-         # Check if root partition exists
          if [ -b /dev/mapper/loop0p2 ]; then
-           echo "✅ Root partition found"
-           
-           # Mount root partition
            sudo mkdir -p /mnt/rootfs
            sudo mount /dev/mapper/loop0p2 /mnt/rootfs
            
            # Check key files
            key_files=("/mnt/rootfs/etc/hostname" "/mnt/rootfs/etc/fstab" "/mnt/rootfs/boot/vmlinuz*" "/mnt/rootfs/lib/modules")
            for file in "${key_files[@]}"; do
-             if [ -e "$file" ]; then
-               echo "✅ Found: $file"
-             else
-               echo "❌ Missing: $file"
-             fi
+             [ -e "$file" ] || echo "Missing: $file"
            done
            
            # Check kernel modules
-           if ls /mnt/rootfs/lib/modules/$KERNEL_VERSION* 1> /dev/null 2>&1; then
-             echo "✅ Kernel modules installed:"
-             ls -la /mnt/rootfs/lib/modules/$KERNEL_VERSION*
-           else
-             echo "❌ Kernel modules not found"
-           fi
+           ls /mnt/rootfs/lib/modules/$KERNEL_VERSION* 1> /dev/null 2>&1 || echo "Kernel modules not found"
            
-           # Unmount and cleanup
            sudo umount /mnt/rootfs
            sudo rmdir /mnt/rootfs
-         else
-           echo "⚠️ Could not find root partition"
          fi
          
-         # Cleanup loop devices
          sudo kpartx -d "$ROOTFS_IMAGE"
-         
-         echo "✅ RootFS artifacts validated successfully"
 
     - name: Compress rootfs image to zip
       run: |
-         echo "🗜️ Compressing rootfs image to zip..."
          ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-         ZIP_NAME="${ROOTFS_IMAGE%.img}.zip"
+         ZIP_FILE="root-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
          
-         # 压缩镜像文件
-         zip -9 "$ZIP_NAME" "$ROOTFS_IMAGE"
-         
-         echo "✅ Compressed: $ZIP_NAME"
-         ls -lh "$ZIP_NAME"
+         zip -9 "$ZIP_FILE" "$ROOTFS_IMAGE"
+         unzip -t "$ZIP_FILE" > /dev/null 2>&1 || { echo "Zip file integrity check failed"; exit 1; }
          
     - name: Extract UUID and boot files from rootfs
       run: |
-         echo "🔍 Extracting UUID and boot files from rootfs image..."
          ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
          
-         # 创建boot文件目录
-         mkdir -p boot-files
+         mkdir -p /mnt/rootfs boot-files
+         sudo kpartx -a "$ROOTFS_IMAGE"
+         sleep 2
          
-         # 直接挂载rootfs镜像（非分区镜像）
-         echo "📂 Mounting rootfs image directly..."
-         sudo mkdir -p /mnt/rootfs
-         sudo mount -o loop "$ROOTFS_IMAGE" /mnt/rootfs
-         
-         # 提取UUID信息
-         echo "📝 Extracting UUID information..."
-         ROOT_UUID=$(sudo blkid -s UUID -o value "$ROOTFS_IMAGE")
-         if [ -n "$ROOT_UUID" ]; then
-           echo "Root Filesystem UUID: $ROOT_UUID"
-           echo "$ROOT_UUID" > boot-files/rootfs-uuid.txt
-           echo "✅ UUID extracted successfully"
-         else
-           echo "❌ Failed to extract UUID from rootfs image"
-           exit 1
-         fi
-         
-         # 提取boot文件
-         echo "📁 Extracting boot files..."
-         
-         # 查找并复制initrd.img文件
-          echo "🔍 Searching for initrd.img files..."
-          
-          # 首先检查/boot目录
-          echo "📂 Checking /boot directory..."
-          sudo ls -la /mnt/rootfs/boot/ 2>/dev/null || echo "⚠️ /boot directory not accessible"
-          
-          INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
-          if [ -n "$INITRD_FILES" ]; then
-            for initrd_file in $INITRD_FILES; do
-              if [ -f "$initrd_file" ]; then
-                filename=$(basename "$initrd_file")
-                sudo cp "$initrd_file" "boot-files/initrd.img"
-                echo "✅ Copied: $filename -> boot-files/initrd.img"
-                break  # 只取第一个匹配的文件
-              fi
-            done
-          else
-            echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
-            
-            # 检查整个文件系统
-            echo "🔍 Searching entire filesystem for initrd files..."
-            INITRD_FILES=$(sudo find /mnt/rootfs -name "initrd.img-*" 2>/dev/null || true)
-            if [ -n "$INITRD_FILES" ]; then
-              echo "📁 Found initrd files in these locations:"
-              echo "$INITRD_FILES"
-              for initrd_file in $INITRD_FILES; do
-                if [ -f "$initrd_file" ]; then
-                  filename=$(basename "$initrd_file")
-                  sudo cp "$initrd_file" "boot-files/initrd.img"
-                  echo "✅ Copied: $filename -> boot-files/initrd.img"
-                  break
-                fi
-              done
-            else
-              echo "❌ No initrd.img files found in the entire filesystem"
-              echo "📊 Listing /mnt/rootfs directory structure..."
-              sudo ls -la /mnt/rootfs/
-              exit 1
-            fi
-          fi
-         
-         # 查找并复制vmlinuz文件
-          echo "🔍 Searching for vmlinuz files..."
-          
-          # 首先检查/boot目录
-          echo "📂 Checking /boot directory for vmlinuz..."
-          sudo ls -la /mnt/rootfs/boot/ 2>/dev/null || echo "⚠️ /boot directory not accessible"
-          
-          VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
-          if [ -n "$VMLINUZ_FILES" ]; then
-            for vmlinuz_file in $VMLINUZ_FILES; do
-              if [ -f "$vmlinuz_file" ]; then
-                filename=$(basename "$vmlinuz_file")
-                sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
-                echo "✅ Copied: $filename -> boot-files/vmlinuz"
-                break  # 只取第一个匹配的文件
-              fi
-            done
-          else
-            echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
-            
-            # 检查整个文件系统
-            echo "🔍 Searching entire filesystem for vmlinuz files..."
-            VMLINUZ_FILES=$(sudo find /mnt/rootfs -name "vmlinuz-*" 2>/dev/null || true)
-            if [ -n "$VMLINUZ_FILES" ]; then
-              echo "📁 Found vmlinuz files in these locations:"
-              echo "$VMLINUZ_FILES"
-              for vmlinuz_file in $VMLINUZ_FILES; do
-                if [ -f "$vmlinuz_file" ]; then
-                  filename=$(basename "$vmlinuz_file")
-                  sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
-                  echo "✅ Copied: $filename -> boot-files/vmlinuz"
-                  break
-                fi
-              done
-            else
-              echo "❌ No vmlinuz files found in the entire filesystem"
-              echo "📊 Listing /mnt/rootfs directory structure..."
-              sudo ls -la /mnt/rootfs/
-              exit 1
-            fi
-          fi
-         
-         # 验证提取的文件
-         echo "🔍 Verifying extracted files..."
-         ls -la boot-files/
-         
-         # 检查文件大小和类型
-         if [ -f "boot-files/initrd.img" ]; then
-           echo "📊 initrd.img: $(ls -lh boot-files/initrd.img | cut -d' ' -f5)"
-           file "boot-files/initrd.img"
-         fi
-         
-         if [ -f "boot-files/vmlinuz" ]; then
-           echo "📊 vmlinuz: $(ls -lh boot-files/vmlinuz | cut -d' ' -f5)"
-           file "boot-files/vmlinuz"
-         fi
-         
-         if [ -f "boot-files/rootfs-uuid.txt" ]; then
-           echo "📄 UUID: $(cat boot-files/rootfs-uuid.txt)"
-         fi
-         
-         # 卸载并清理
-         sudo umount /mnt/rootfs
-         sudo rmdir /mnt/rootfs
-         
-         echo "✅ UUID and boot files extraction completed"
-
-    - name: Create boot package
-      run: |
-         echo "📦 Creating boot package..."
-         
-         # 创建boot包
-         BOOT_PACKAGE="boot-files-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
-         
-         # 压缩boot文件
-         if [ -d "boot-files" ]; then
-           zip -9 "$BOOT_PACKAGE" -r boot-files/
-           echo "✅ Boot package created: $BOOT_PACKAGE"
-           ls -lh "$BOOT_PACKAGE"
+         if [ -b /dev/mapper/loop0p2 ]; then
+           sudo mount /dev/mapper/loop0p2 /mnt/rootfs
            
-           # 验证boot包完整性
-           echo "🔍 Verifying boot package integrity..."
-           if [ -f "$BOOT_PACKAGE" ]; then
-             echo "✅ Boot package file exists"
-             
-             # 检查文件大小
-             BOOT_SIZE=$(stat -c%s "$BOOT_PACKAGE")
-             if [ "$BOOT_SIZE" -gt 1000000 ]; then  # 至少1MB
-               echo "✅ Boot package size is reasonable: $BOOT_SIZE bytes"
-             else
-               echo "⚠️ Boot package size seems too small: $BOOT_SIZE bytes"
-             fi
-             
-             # 验证zip文件结构
-             if unzip -l "$BOOT_PACKAGE" | grep -q "boot-files/"; then
-               echo "✅ Boot package contains boot-files directory"
-             else
-               echo "❌ Boot package does not contain boot-files directory"
-               exit 1
-             fi
-             
-             # 验证具体文件
-             unzip -l "$BOOT_PACKAGE" | grep -E "(rootfs-uuid.txt|vmlinuz|initrd.img)" || echo "⚠️ Some expected files not found in package listing"
-             
+           # Extract UUID from fstab
+           [ -f "/mnt/rootfs/etc/fstab" ] || { echo "fstab file not found"; exit 1; }
+           ROOT_UUID=$(grep -E '^[^#].* / ' /mnt/rootfs/etc/fstab | awk '{print $1}' | sed 's/UUID=//')
+           [ -n "$ROOT_UUID" ] || { echo "Could not extract UUID from fstab"; exit 1; }
+           echo "$ROOT_UUID" > boot-files/rootfs-uuid.txt
+           
+           # Extract initrd.img
+           if [ -f "/mnt/rootfs/boot/initrd.img-$KERNEL_VERSION" ]; then
+             sudo cp "/mnt/rootfs/boot/initrd.img-$KERNEL_VERSION" "boot-files/initrd.img"
+           elif [ -f "/mnt/rootfs/boot/initrd.img" ]; then
+             sudo cp "/mnt/rootfs/boot/initrd.img" "boot-files/initrd.img"
            else
-             echo "❌ Boot package file not created"
-             exit 1
+             INITRD_FILES=$(sudo find /mnt/rootfs -name "initrd*" 2>/dev/null || true)
+             [ -n "$INITRD_FILES" ] || { echo "No initrd files found"; exit 1; }
+             for initrd_file in $INITRD_FILES; do
+               [ -f "$initrd_file" ] && sudo cp "$initrd_file" "boot-files/initrd.img" && break
+             done
            fi
            
-           echo "✅ Boot package integrity verified successfully"
-         else
-           echo "❌ boot-files directory not found"
-           exit 1
+           # Extract vmlinuz
+           if [ -f "/mnt/rootfs/boot/vmlinuz-$KERNEL_VERSION" ]; then
+             sudo cp "/mnt/rootfs/boot/vmlinuz-$KERNEL_VERSION" "boot-files/vmlinuz"
+           elif [ -f "/mnt/rootfs/boot/vmlinuz" ]; then
+             sudo cp "/mnt/rootfs/boot/vmlinuz" "boot-files/vmlinuz"
+           else
+             VMLINUZ_FILES=$(sudo find /mnt/rootfs -name "vmlinuz-*" 2>/dev/null || true)
+             [ -n "$VMLINUZ_FILES" ] || { echo "No vmlinuz files found"; exit 1; }
+             for vmlinuz_file in $VMLINUZ_FILES; do
+               [ -f "$vmlinuz_file" ] && sudo cp "$vmlinuz_file" "boot-files/vmlinuz" && break
+             done
+           fi
+           
+           sudo umount /mnt/rootfs
+           sudo rmdir /mnt/rootfs
          fi
+         
+         sudo kpartx -d "$ROOTFS_IMAGE"
+
+    - name: Create boot package
+       run: |
+         BOOT_PACKAGE="boot-files-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
+         
+         [ -d "boot-files" ] || { echo "boot-files directory not found"; exit 1; }
+         zip -9 "$BOOT_PACKAGE" -r boot-files/
+         
+         [ -f "$BOOT_PACKAGE" ] || { echo "Boot package file not created"; exit 1; }
+         BOOT_SIZE=$(stat -c%s "$BOOT_PACKAGE")
+         [ "$BOOT_SIZE" -gt 1000000 ] || echo "Boot package size seems too small"
+         
+         unzip -l "$BOOT_PACKAGE" | grep -q "boot-files/" || { echo "Boot package does not contain boot-files directory"; exit 1; }
+
+    - name: Prepare release files
+      if: github.event.inputs.release_tag != ''
+      run: |
+        echo "📁 Preparing release-files directory"
+        rm -rf release-files || true
+        mkdir -p release-files
+        # Copy DEBs and rootfs artifacts into release-files preserving structure
+        find . -type f -name "*.deb" -exec cp --parents {} release-files/ \; || true
+        find . -type f -name "*.7z" -exec cp --parents {} release-files/ \; || true
+        find . -type f -name "*.zip" -exec cp --parents {} release-files/ \; || true
+        find . -type f -name "*.img" -exec cp --parents {} release-files/ \; || true
+        echo "📋 Release files:"
+        ls -la release-files || true
 
     - name: Upload to GitHub Release
       if: github.event.inputs.release_tag != ''
@@ -537,3 +381,5 @@ jobs:
           ---
           
           *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
+        files: |
+          release-files/**

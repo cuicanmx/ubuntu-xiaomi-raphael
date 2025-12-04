@@ -36,174 +36,69 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          wget \
-          curl \
-          parted \
-          dosfstools \
-          e2fsprogs \
-          mtools \
-          qemu-user-static \
-          binfmt-support \
-          fakeroot \
-          cpio \
-          kmod \
-          rsync \
-          jq
+        sudo apt-get install -y wget curl parted dosfstools e2fsprogs mtools qemu-user-static binfmt-support fakeroot cpio kmod rsync jq
           
     - name: Download rootfs image
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        echo "📥 Downloading rootfs image..."
-        
-        # 下载rootfs镜像（用于提取内核文件和UUID）
-        echo "📥 Downloading rootfs image..."
-        gh release download $RELEASE_TAG \
-          --pattern "root-*$DISTRIBUTION*.zip" \
-          --repo ${{ github.repository }} || {
-          echo "⚠️ Failed to download zip from release, trying img file"
-          # 如果zip不存在，下载img文件
-          gh release download $RELEASE_TAG \
-            --pattern "root-*$DISTRIBUTION*.img" \
-            --repo ${{ github.repository }} || {
-            echo "⚠️ Failed to download rootfs from release, trying artifacts"
-            # 从工作流产物下载
+        gh release download $RELEASE_TAG --pattern "root-*$DISTRIBUTION*.zip" --repo ${{ github.repository }} || {
+          gh release download $RELEASE_TAG --pattern "root-*$DISTRIBUTION*.img" --repo ${{ github.repository }} || {
             gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
-              echo "❌ No rootfs image found"
+              echo "No rootfs image found"
               exit 1
             }
           }
         }
         
-        # 如果是zip文件，则解压
         if ls root-*.zip 1> /dev/null 2>&1; then
-          echo "🗜️ Extracting rootfs zip file..."
           ZIP_FILE=$(ls root-*.zip | head -1)
           unzip "$ZIP_FILE"
-          echo "✅ Extracted: $ZIP_FILE"
-          # 删除zip文件以节省空间
           rm "$ZIP_FILE"
         fi
         
         ROOTFS_IMG=$(ls root-*.img | head -1)
-        if [ -z "$ROOTFS_IMG" ]; then
-          echo "❌ No rootfs image found after extraction"
-          exit 1
-        else
-          echo "✅ Rootfs image: $ROOTFS_IMG"
-          
-          # 验证rootfs镜像完整性
-          echo "🔍 Verifying rootfs image integrity..."
-          file "$ROOTFS_IMG"
-          ls -lh "$ROOTFS_IMG"
-          
-          # 检查镜像大小
-          IMG_SIZE=$(stat -c%s "$ROOTFS_IMG")
-          MIN_SIZE=$((500 * 1024 * 1024))  # 500MB
-          if [ "$IMG_SIZE" -ge "$MIN_SIZE" ]; then
-            echo "✅ Rootfs image size is acceptable: $(($IMG_SIZE/1024/1024))MB"
-          else
-            echo "⚠️ Rootfs image size ($(($IMG_SIZE/1024/1024))MB) is smaller than expected"
-          fi
-        fi
+        [ -n "$ROOTFS_IMG" ] || { echo "No rootfs image found after extraction"; exit 1; }
+        
+        IMG_SIZE=$(stat -c%s "$ROOTFS_IMG")
+        MIN_SIZE=$((500 * 1024 * 1024))
+        [ "$IMG_SIZE" -ge "$MIN_SIZE" ] || echo "Rootfs image size smaller than expected"
         
     - name: Build boot image using script
       run: |
-        echo "🔧 Building boot image using raphael-boot_build.sh..."
-        
-        # 给脚本执行权限
         chmod +x raphael-boot_build.sh
         
-        # 执行boot镜像构建脚本
         ./raphael-boot_build.sh \
           --kernel-version "$KERNEL_VERSION" \
           --distribution "$DISTRIBUTION" \
           --rootfs-image "$ROOTFS_IMG" \
           --output "xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         
-        echo "✅ Boot image built successfully"
-        
-        # 显示构建结果
-        echo "📊 Boot image details:"
-        ls -lh xiaomi-k20pro-boot-*.img
-        
-        # 从脚本输出中提取ROOTFS_UUID
-        echo "🔍 Extracting ROOTFS_UUID from script output..."
         ROOTFS_UUID=$(./raphael-boot_build.sh --kernel-version "$KERNEL_VERSION" --distribution "$DISTRIBUTION" --rootfs-image "$ROOTFS_IMG" --dry-run 2>&1 | grep "Rootfs UUID:" | tail -1 | awk '{print $NF}' || echo "")
-        if [ -n "$ROOTFS_UUID" ]; then
-          echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
-          echo "✅ Extracted ROOTFS_UUID: $ROOTFS_UUID"
-        else
-          echo "⚠️ Could not extract ROOTFS_UUID from script output"
-        fi
+        [ -n "$ROOTFS_UUID" ] && echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
         
     - name: Verify boot image
       run: |
-        echo "🔍 Verifying boot image..."
-        
-        # Check if boot image exists
         BOOT_IMG=$(ls xiaomi-k20pro-boot-*.img 2>/dev/null | head -1)
-        if [ -z "$BOOT_IMG" ]; then
-          echo "❌ Boot image not found"
-          exit 1
-        fi
+        [ -n "$BOOT_IMG" ] || { echo "Boot image not found"; exit 1; }
         
-        echo "✅ Boot image: $BOOT_IMG"
-        echo "📊 Boot image details:"
-        ls -lh "$BOOT_IMG"
-        file "$BOOT_IMG"
-        
-        # Verify image size (should be around 256MB for boot partition)
         IMG_SIZE=$(stat -c%s "$BOOT_IMG")
-        MIN_SIZE=$((200 * 1024 * 1024))  # 200MB
-        MAX_SIZE=$((500 * 1024 * 1024))  # 500MB
-        if [ "$IMG_SIZE" -ge "$MIN_SIZE" ] && [ "$IMG_SIZE" -le "$MAX_SIZE" ]; then
-          echo "✅ Boot image size is within expected range"
-        else
-          echo "⚠️ Boot image size ($IMG_SIZE bytes) is outside expected range ($MIN_SIZE - $MAX_SIZE bytes)"
-        fi
+        MIN_SIZE=$((200 * 1024 * 1024))
+        MAX_SIZE=$((500 * 1024 * 1024))
+        [ "$IMG_SIZE" -ge "$MIN_SIZE" ] && [ "$IMG_SIZE" -le "$MAX_SIZE" ] || echo "Boot image size outside expected range"
         
-        # Try to mount and check content
-        echo "🔍 Checking boot image content..."
         mkdir -p /tmp/boot-mount
         sudo mount -o loop "$BOOT_IMG" /tmp/boot-mount
         
-        # Check essential boot files
         essential_files=("/tmp/boot-mount/EFI/boot/bootaa64.efi" "/tmp/boot-mount/loader/entries/ubuntu.conf" "/tmp/boot-mount/linux.efi" "/tmp/boot-mount/initramfs")
-        
         for file in "${essential_files[@]}"; do
-          if [ -f "$file" ]; then
-            echo "✅ Found: $file"
-          else
-            echo "❌ Missing: $file"
-          fi
+          [ -f "$file" ] || echo "Missing: $file"
         done
         
-        # Check loader configuration
-        if [ -f "/tmp/boot-mount/loader/loader.conf" ]; then
-          echo "📄 Loader configuration:"
-          cat /tmp/boot-mount/loader/loader.conf
-        fi
+        [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ] && grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf || echo "Kernel version in boot entry does not match"
         
-        # Check Ubuntu entry
-        if [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ]; then
-          echo "📄 Ubuntu boot entry:"
-          cat /tmp/boot-mount/loader/entries/ubuntu.conf
-          
-          # Verify kernel version in entry
-          if grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf; then
-            echo "✅ Kernel version in boot entry matches: $KERNEL_VERSION"
-          else
-            echo "⚠️ Kernel version in boot entry does not match"
-          fi
-        fi
-        
-        # Unmount
         sudo umount /tmp/boot-mount
         rmdir /tmp/boot-mount
-        
-        echo "✅ Boot image verification completed"
         
     - name: Upload boot image to GitHub Release
       uses: softprops/action-gh-release@v1

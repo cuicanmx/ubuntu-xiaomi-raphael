@@ -31,25 +31,8 @@ jobs:
         
       - name: Install build dependencies
         run: |
-          echo "📦 Installing cross-compilation dependencies..."
           sudo apt-get update
-          
-          # Install cross-compilation toolchain and build dependencies
-          sudo apt-get install -y \
-            crossbuild-essential-arm64 \
-            build-essential \
-            bison \
-            flex \
-            libssl-dev \
-            bc \
-            git \
-            device-tree-compiler \
-            u-boot-tools \
-            dpkg-dev \
-            debhelper \
-            fakeroot
-          
-          echo "✅ Dependencies installed successfully"
+          sudo apt-get install -y crossbuild-essential-arm64 build-essential bison flex libssl-dev bc git device-tree-compiler u-boot-tools dpkg-dev debhelper fakeroot
             
       - name: Build kernel packages
         run: |
@@ -58,51 +41,17 @@ jobs:
           
       - name: Verify kernel packages
         run: |
-          echo "🔍 Verifying generated kernel packages:"
+          [ -d "output/kernel" ] || { echo "Output directory not found"; exit 1; }
           
-          # Check if output directory exists
-          if [ ! -d "output/kernel" ]; then
-            echo "❌ Output directory not found"
-            exit 1
-          else
-            # List all generated files
-            echo "📁 Generated files:"
-            ls -la output/kernel/
-          fi
+          ls output/kernel/*.deb 1> /dev/null 2>&1 || { echo "No DEB packages found"; exit 1; }
           
-          # Verify DEB packages
-          if ls output/kernel/*.deb 1> /dev/null 2>&1; then
-            echo "✅ Found DEB packages:"
-            ls -la output/kernel/*.deb
-            
-            # Check package integrity
-            for pkg in output/kernel/*.deb; do
-              echo "🔍 Verifying package: $pkg"
-              dpkg-deb -I "$pkg" || echo "⚠️ Package verification failed for $pkg"
-            done
-          else
-            echo "❌ No DEB packages found"
-            exit 1
-          fi
+          for pkg in output/kernel/*.deb; do
+            dpkg-deb -I "$pkg" || echo "Package verification failed for $pkg"
+          done
           
-          # Verify kernel image
-          if [ -f "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}" ]; then
-            echo "✅ Found kernel image: Image.gz-${{ github.event.inputs.kernel_version }}"
-            file "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}"
-          else
-            echo "❌ Kernel image not found"
-            exit 1
-          fi
+          [ -f "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}" ] || { echo "Kernel image not found"; exit 1; }
           
-          # Verify DTB files
-          if ls output/kernel/dtbs/sm8150-*.dtb 1> /dev/null 2>&1; then
-            echo "✅ Found DTB files:"
-            ls -la output/kernel/dtbs/sm8150-*.dtb
-          else
-            echo "⚠️ DTB files not found"
-          fi
-          
-          echo "✅ Build verification completed"
+          ls output/kernel/dtbs/sm8150-*.dtb 1> /dev/null 2>&1 || echo "DTB files not found"
           
       - name: Upload kernel packages to GitHub Release
         uses: softprops/action-gh-release@v1
