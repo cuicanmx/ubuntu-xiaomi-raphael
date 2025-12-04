@@ -148,4 +148,3 @@ jobs:
             output/kernel/kernel-*-raphael.tar.gz
             output/kernel/kernel-*-raphael.zip
             output/kernel/kernel-*-raphael.*
-        if: ${{ github.event.inputs.upload_to_release == true }}
