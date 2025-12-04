@@ -189,8 +189,7 @@ jobs:
           echo "✅ Build verification completed (always successful for cache preservation)"
           exit 0
           
-      - name: Upload kernel packages to release
-        if: github.event.inputs.upload_to_release == 'true'
+      - name: Upload kernel packages to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.kernel_version }}
@@ -248,16 +247,3 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: kernel-ccache-${{ runner.os }}-${{ env.ARCH }}-${{ github.event.inputs.kernel_version }}-${{ hashFiles('**/raphael-kernel_build.sh', '**/build-config.sh', '**/DEBIAN/control') }}
-          
-      - name: Upload kernel packages as artifacts
-        if: github.event.inputs.upload_to_release != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-packages-${{ github.event.inputs.kernel_version }}
-          path: |
-            output/kernel/*.deb
-            output/kernel/Image.gz-*
-            output/kernel/dtbs/*
-            output/kernel/kernel-*.tar.gz
-            output/kernel/kernel-*.zip
-          retention-days: 30

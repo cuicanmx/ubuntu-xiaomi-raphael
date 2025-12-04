@@ -251,49 +251,54 @@ jobs:
         
         echo "✅ Boot image verification completed"
         
-    - name: Upload boot image to release
+    - name: Upload boot image to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ env.RELEASE_TAG }}
-        name: "Boot Image ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael"
+        tag_name: v${{ env.KERNEL_VERSION }}
+        name: "Boot Image ${{ env.KERNEL_VERSION }} for Xiaomi Raphael"
         body: |
-          # Boot Image ${{ github.event.inputs.kernel_version }} for Xiaomi Raphael
+          # Boot Image ${{ env.KERNEL_VERSION }} for Xiaomi Raphael
           
-          ## Image Details
-          - **Distribution**: ${{ github.event.inputs.distribution }}
-          - **Kernel Version**: ${{ github.event.inputs.kernel_version }}
-          - **RootFS UUID**: ${{ env.ROOTFS_UUID }}
-          - **Build Date**: ${{ github.event.repository.created_at }}
-          - **Build ID**: ${{ github.run_id }}
+          ## Build Information
+          - Distribution: ${{ env.DISTRIBUTION }}
+          - Kernel Version: ${{ env.KERNEL_VERSION }}
+          - Architecture: ARM64
+          - Target Device: Xiaomi Raphael (K20 Pro)
+          - Build Date: ${{ github.event.repository.created_at }}
+          - Build ID: ${{ github.run_id }}
+          
+          ## Generated Files
+          - **Boot Image**: Complete bootable image (xiaomi-k20pro-boot-*.img)
+          - **Kernel Files**: vmlinuz and initrd.img included in the image
+          - **EFI System**: UEFI bootloader configuration
+          - **RootFS UUID**: Unique identifier for the root filesystem
           
           ## Usage
-          Flash this boot image to the boot partition of your Xiaomi K20 Pro device.
           
-          ## Boot Configuration
-          The image contains a properly configured systemd-boot loader with:
-          - Linux kernel (linux.efi)
-          - Initramfs (initramfs)
-          - Root filesystem UUID: ${{ env.ROOTFS_UUID }}
-          
-          ## Installation Instructions
+          ### Flashing the Boot Image:
           ```bash
-          # Flash the boot image
-          fastboot flash boot xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          
-          # Reboot
+          # Use fastboot to flash the boot image
+          fastboot flash boot xiaomi-k20pro-boot-${{ env.DISTRIBUTION }}-${{ env.KERNEL_VERSION }}.img
           fastboot reboot
           ```
           
-        files: xiaomi-k20pro-boot-*.img
+          ### Verification:
+          After flashing, verify the boot image contains the correct files:
+          ```bash
+          # Mount the boot image to check contents
+          mkdir /tmp/boot-mount
+          sudo mount -o loop xiaomi-k20pro-boot-${{ env.DISTRIBUTION }}-${{ env.KERNEL_VERSION }}.img /tmp/boot-mount
+          ls -la /tmp/boot-mount/
+          sudo umount /tmp/boot-mount
+          ```
+          
+          ## Changelog
+          - Updated kernel to ${{ env.KERNEL_VERSION }}
+          - Distribution: ${{ env.DISTRIBUTION }}
+          - Improved boot configuration and EFI setup
+        files: xiaomi-k20pro-boot-${{ env.DISTRIBUTION }}-${{ env.KERNEL_VERSION }}.img
         draft: false
         prerelease: false
-        
-    - name: Upload boot image as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: boot-image-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}
-        path: xiaomi-k20pro-boot-*.img
-        retention-days: 30
         
     - name: Display build summary
       run: |
