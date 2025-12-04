@@ -142,6 +142,7 @@ jobs:
             
             *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
           files: |
-            output/kernel/kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
-            output/kernel/kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
+            output/kernel/kernel-*.tar.gz
+            output/kernel/kernel-*.zip
+            output/kernel/*.deb
         if: ${{ github.event.inputs.upload_to_release == true }}

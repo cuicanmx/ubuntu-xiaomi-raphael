@@ -279,13 +279,16 @@ jobs:
         echo "📁 Preparing release-files directory"
         rm -rf release-files || true
         mkdir -p release-files
+        # Copy kernel packages from output/kernel directory
+        if [ -d "output/kernel" ]; then
+          cp -r output/kernel/* release-files/ || true
+        fi
         # Copy DEBs and rootfs artifacts into release-files preserving structure
-        find . -type f -name "*.deb" -exec cp --parents {} release-files/ \; || true
-        find . -type f -name "*.7z" -exec cp --parents {} release-files/ \; || true
-        find . -type f -name "*.zip" -exec cp --parents {} release-files/ \; || true
-        find . -type f -name "*.img" -exec cp --parents {} release-files/ \; || true
+        find . -type f \( -name "*.deb" -o -name "*.7z" -o -name "*.zip" -o -name "*.img" -o -name "*.tar.gz" \) -exec cp --parents {} release-files/ \; || true
         echo "📋 Release files:"
         ls -la release-files || true
+        echo "� Release files structure:"
+        find release-files -type f | head -20 || true
 
     - name: Upload to GitHub Release
       if: github.event.inputs.release_tag != ''
