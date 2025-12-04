@@ -214,7 +214,6 @@ jobs:
          unzip -t "$ZIP_FILE" > /dev/null 2>&1 || { echo "Zip file integrity check failed"; exit 1; }
          
     - name: Prepare release files
-      if: github.event.inputs.release_tag != ''
       run: |
         echo "📁 Preparing release-files directory"
         rm -rf release-files || true
@@ -231,7 +230,6 @@ jobs:
         find release-files -type f | head -20 || true
 
     - name: Upload to GitHub Release
-      if: github.event.inputs.release_tag != ''
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.event.inputs.release_tag }}
