@@ -144,12 +144,9 @@ install_dependencies() {
         flex \
         libssl-dev \
         device-tree-compiler \
-        u-boot-tools \
         dpkg-dev \
-        debhelper \
-        fakeroot \
-        ccache
-    
+        debhelper 
+            
     log_success "依赖项安装成功"
 }
 
@@ -160,7 +157,7 @@ check_dependencies() {
     log_info "🔍 正在检查构建依赖项..."
     
     # 检查必需的交叉编译工具
-    local required_tools=("aarch64-linux-gnu-gcc" "aarch64-linux-gnu-g++" "make" "git" "ccache")
+    local required_tools=("aarch64-linux-gnu-gcc" "aarch64-linux-gnu-g++" "make" "git")
     local missing_tools=()
     
     for tool in "${required_tools[@]}"; do
@@ -218,22 +215,9 @@ configure_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # 使用GitHub Actions工作流中的环境变量
-    # CCACHE配置已由工作流处理
-    
-    # 验证ccache是否可用并显示状态
-    if command -v ccache >/dev/null 2>&1; then
-        log_info "🔧 使用ccache，缓存目录: $CCACHE_DIR"
-        log_info "📊 配置前的ccache状态:"
-        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache状态"
-    else
-        log_warning "⚠️ ccache不可用，无缓存构建"
-    fi
-    
     log_info "🔧 正在运行内核配置..."
     log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\" defconfig sm8150.config"
     
-    # 使用ccache包装器，通过PATH环境变量自动拦截编译器调用
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
@@ -263,24 +247,10 @@ build_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # 使用GitHub Actions工作流中的环境变量
-    # CCACHE配置已由工作流处理
-    
-    # 验证ccache是否可用并显示状态
-    if command -v ccache >/dev/null 2>&1; then
-        log_info "🔧 使用ccache进行内核构建"
-        log_info "📁 ccache目录: $CCACHE_DIR"
-        log_info "📊 构建前的ccache状态:"
-        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache状态"
-    else
-        log_warning "⚠️ ccache不可用，无缓存构建"
-    fi
-    
     log_info "🔨 开始内核编译..."
     log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\""
     log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    # 使用ccache包装器，通过PATH环境变量自动拦截编译器调用
     make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
@@ -300,12 +270,6 @@ build_kernel() {
     else
         log_error "❌ 未找到内核镜像"
         exit 1
-    fi
-    
-    # 显示构建后的ccache统计信息
-    if command -v ccache >/dev/null 2>&1; then
-        log_info "📊 构建后的ccache统计信息:"
-        ccache -s 2>/dev/null || log_warning "⚠️ 无法获取ccache统计信息"
     fi
     
     log_success "✅ 内核构建成功 (版本: $_kernel_version)"
@@ -379,10 +343,6 @@ create_compressed_archive() {
 1. Install DEB packages: \`sudo dpkg -i packages/*.deb\`
 2. Update bootloader with kernel image if needed
 3. Reboot to apply changes
-
-## Cache Information
-- CCACHE Enabled: $CACHE_ENABLED
-- CCACHE Directory: $CCACHE_DIR
 EOF
     
     # Create compressed archive (tar.gz for maximum compatibility)
