@@ -330,11 +330,41 @@ handle_rootfs_file() {
 }
 
 # ----------------------------- 
-# Extract rootfs UUID
+# Extract rootfs UUID and kernel files
 # ----------------------------- 
 extract_rootfs_uuid() {
-    log_info "Extracting UUID from rootfs image: $ROOTFS_IMAGE"
+    log_info "Extracting UUID and kernel files..."
     
+    # 优先使用boot包中的文件
+    if [[ -d "boot-files" ]]; then
+        log_info "Using files from boot package"
+        
+        # 读取UUID文件
+        if [[ -f "boot-files/rootfs-uuid.txt" ]]; then
+            ROOTFS_UUID=$(cat "boot-files/rootfs-uuid.txt")
+            log_success "Rootfs UUID from boot package: $ROOTFS_UUID"
+        else
+            log_warning "UUID file not found in boot package, falling back to rootfs image"
+            extract_uuid_from_rootfs
+        fi
+        
+        # 检查kernel文件
+        if [[ -f "boot-files/vmlinuz" && -f "boot-files/initrd.img" ]]; then
+            log_success "Kernel files found in boot package"
+            # 这些文件将在copy_kernel_files函数中使用
+        else
+            log_warning "Kernel files not found in boot package, falling back to rootfs image"
+        fi
+    else
+        log_info "Boot package not found, extracting from rootfs image"
+        extract_uuid_from_rootfs
+    fi
+}
+
+# ----------------------------- 
+# Extract UUID from rootfs image (fallback)
+# ----------------------------- 
+extract_uuid_from_rootfs() {
     if [[ ! -f "$ROOTFS_IMAGE" ]]; then
         log_error "Rootfs image not found: $ROOTFS_IMAGE"
         return 1
@@ -351,39 +381,56 @@ extract_rootfs_uuid() {
 }
 
 # ----------------------------- 
-# Mount rootfs and copy kernel files
+# Copy kernel files from boot package or rootfs
 # ----------------------------- 
 copy_kernel_files() {
-    log_info "Mounting rootfs and copying kernel files..."
+    log_info "Copying kernel files..."
     
-    # Mount rootfs
-    sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
-        log_error "Failed to mount rootfs image"
-        return 1
-    }
-    
-    # Find kernel files
-    local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
-    local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
-    
-    if [[ -z "$vmlinuz_file" ]] || [[ -z "$initrd_file" ]]; then
-        log_error "Kernel files not found in rootfs"
-        ls -la "$ROOTFS_MOUNT_DIR/boot/"
-        return 1
+    # 优先使用boot包中的文件
+    if [[ -f "boot-files/vmlinuz" && -f "boot-files/initrd.img" ]]; then
+        log_info "Using kernel files from boot package"
+        
+        # 复制vmlinuz
+        cp "boot-files/vmlinuz" "$MOUNT_DIR/linux.efi"
+        log_success "Copied vmlinuz -> linux.efi"
+        
+        # 复制initrd.img
+        cp "boot-files/initrd.img" "$MOUNT_DIR/initramfs"
+        log_success "Copied initrd.img -> initramfs"
+        
+    else
+        log_info "Boot package not found, extracting from rootfs image"
+        
+        # Mount rootfs
+        sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
+            log_error "Failed to mount rootfs image"
+            return 1
+        }
+        
+        # Find kernel files
+        local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
+        local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
+        
+        if [[ -z "$vmlinuz_file" ]] || [[ -z "$initrd_file" ]]; then
+            log_error "Kernel files not found in rootfs"
+            ls -la "$ROOTFS_MOUNT_DIR/boot/"
+            sudo umount "$ROOTFS_MOUNT_DIR"
+            return 1
+        fi
+        
+        log_info "Found kernel files:"
+        echo "  - vmlinuz: $vmlinuz_file"
+        echo "  - initrd: $initrd_file"
+        
+        # Copy to boot image
+        sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
+        sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
+        
+        log_success "Kernel files copied to boot image"
+        
+        # Unmount rootfs
+        sudo umount "$ROOTFS_MOUNT_DIR"
     fi
-    
-    log_info "Found kernel files:"
-    echo "  - vmlinuz: $vmlinuz_file"
-    echo "  - initrd: $initrd_file"
-    
-    # Copy to boot image
-    sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
-    sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
-    
-    log_success "Kernel files copied to boot image"
-    
-    # Unmount rootfs
-    sudo umount "$ROOTFS_MOUNT_DIR"
 }
 
 # ----------------------------- 

@@ -328,13 +328,138 @@ jobs:
          echo "✅ Compressed: $ZIP_NAME"
          ls -lh "$ZIP_NAME"
          
-    - name: Upload rootfs image and zip
+    - name: Extract UUID and boot files from rootfs
+      run: |
+         echo "🔍 Extracting UUID and boot files from rootfs image..."
+         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+         
+         # 创建boot文件目录
+         mkdir -p boot-files
+         
+         # 挂载rootfs镜像提取文件
+         sudo kpartx -a "$ROOTFS_IMAGE"
+         sleep 2
+         
+         # 检查根分区是否存在
+         if [ -b /dev/mapper/loop0p2 ]; then
+           echo "✅ Root partition found, mounting..."
+           
+           # 挂载根分区
+           sudo mkdir -p /mnt/rootfs
+           sudo mount /dev/mapper/loop0p2 /mnt/rootfs
+           
+           # 提取UUID信息
+           echo "📝 Extracting UUID information..."
+           ROOT_UUID=$(sudo blkid -s UUID -o value /dev/mapper/loop0p2)
+           echo "Root Partition UUID: $ROOT_UUID"
+           echo "$ROOT_UUID" > boot-files/rootfs-uuid.txt
+           
+           # 提取boot文件
+           echo "📁 Extracting boot files..."
+           
+           # 查找并复制initrd.img文件
+           INITRD_FILES=$(sudo find /mnt/rootfs/boot -name "initrd.img-*" 2>/dev/null || true)
+           if [ -n "$INITRD_FILES" ]; then
+             for initrd_file in $INITRD_FILES; do
+               if [ -f "$initrd_file" ]; then
+                 filename=$(basename "$initrd_file")
+                 sudo cp "$initrd_file" "boot-files/initrd.img"
+                 echo "✅ Copied: $filename -> boot-files/initrd.img"
+                 break  # 只取第一个匹配的文件
+               fi
+             done
+           else
+             echo "⚠️ No initrd.img files found in /mnt/rootfs/boot/"
+           fi
+           
+           # 查找并复制vmlinuz文件
+           VMLINUZ_FILES=$(sudo find /mnt/rootfs/boot -name "vmlinuz-*" 2>/dev/null || true)
+           if [ -n "$VMLINUZ_FILES" ]; then
+             for vmlinuz_file in $VMLINUZ_FILES; do
+               if [ -f "$vmlinuz_file" ]; then
+                 filename=$(basename "$vmlinuz_file")
+                 sudo cp "$vmlinuz_file" "boot-files/vmlinuz"
+                 echo "✅ Copied: $filename -> boot-files/vmlinuz"
+                 break  # 只取第一个匹配的文件
+               fi
+             done
+           else
+             echo "⚠️ No vmlinuz files found in /mnt/rootfs/boot/"
+           fi
+           
+           # 验证提取的文件
+           echo "🔍 Verifying extracted files..."
+           ls -la boot-files/
+           
+           # 卸载并清理
+           sudo umount /mnt/rootfs
+           sudo rmdir /mnt/rootfs
+         else
+           echo "❌ Could not find root partition"
+           exit 1
+         fi
+         
+         # 清理loop设备
+         sudo kpartx -d "$ROOTFS_IMAGE"
+         
+         echo "✅ UUID and boot files extraction completed"
+
+    - name: Create boot package
+      run: |
+         echo "📦 Creating boot package..."
+         
+         # 创建boot包
+         BOOT_PACKAGE="boot-files-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
+         
+         # 压缩boot文件
+         if [ -d "boot-files" ]; then
+           zip -9 "$BOOT_PACKAGE" -r boot-files/
+           echo "✅ Boot package created: $BOOT_PACKAGE"
+           ls -lh "$BOOT_PACKAGE"
+           
+           # 验证boot包完整性
+           echo "🔍 Verifying boot package integrity..."
+           if [ -f "$BOOT_PACKAGE" ]; then
+             echo "✅ Boot package file exists"
+             
+             # 检查文件大小
+             BOOT_SIZE=$(stat -c%s "$BOOT_PACKAGE")
+             if [ "$BOOT_SIZE" -gt 1000000 ]; then  # 至少1MB
+               echo "✅ Boot package size is reasonable: $BOOT_SIZE bytes"
+             else
+               echo "⚠️ Boot package size seems too small: $BOOT_SIZE bytes"
+             fi
+             
+             # 验证zip文件结构
+             if unzip -l "$BOOT_PACKAGE" | grep -q "boot-files/"; then
+               echo "✅ Boot package contains boot-files directory"
+             else
+               echo "❌ Boot package does not contain boot-files directory"
+               exit 1
+             fi
+             
+             # 验证具体文件
+             unzip -l "$BOOT_PACKAGE" | grep -E "(rootfs-uuid.txt|vmlinuz|initrd.img)" || echo "⚠️ Some expected files not found in package listing"
+             
+           else
+             echo "❌ Boot package file not created"
+             exit 1
+           fi
+           
+           echo "✅ Boot package integrity verified successfully"
+         else
+           echo "❌ boot-files directory not found"
+           exit 1
+         fi
+
+    - name: Upload rootfs image and boot packages
       uses: actions/upload-artifact@v4
       with:
          name: xiaomi-raphael-rootfs_${{ github.event.inputs.distribution }}_${{ github.event.inputs.kernel_version }}
          path: |
            root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
            root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
+           boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
          retention-days: 30
 
   release:
@@ -364,6 +489,7 @@ jobs:
           ## RootFS Images
           - **Full Image**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
           - **Compressed**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (recommended for boot image builds)
+          - **Boot Package**: boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (contains UUID, initrd.img, and vmlinuz for boot image creation)
           
           ## Build Information
           - Distribution: ${{ github.event.inputs.distribution }}
@@ -397,5 +523,6 @@ jobs:
         files: |
           rootfs-images/root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
           rootfs-images/root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
+          rootfs-images/boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
         draft: false
         prerelease: false

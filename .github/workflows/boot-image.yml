@@ -64,13 +64,70 @@ jobs:
           rsync \
           jq
           
-    - name: Download and extract rootfs image
+    - name: Download rootfs and boot packages
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        echo "📥 Downloading compressed rootfs image..."
+        echo "📥 Downloading rootfs and boot packages..."
         
-        # 优先下载zip压缩包
+        # 下载boot包（包含UUID、initrd.img、vmlinuz）
+        echo "📦 Downloading boot package..."
+        gh release download $RELEASE_TAG \
+          --pattern "boot-files-*$DISTRIBUTION*.zip" \
+          --repo ${{ github.repository }} || {
+          echo "⚠️ Failed to download boot package from release, trying artifacts"
+          # 从工作流产物下载
+          gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
+            echo "❌ No boot package found"
+            exit 1
+          }
+        }
+        
+        # 解压boot包
+        BOOT_PACKAGE=$(ls boot-files-*.zip | head -1)
+        if [ -n "$BOOT_PACKAGE" ]; then
+          echo "🗜️ Extracting boot package: $BOOT_PACKAGE"
+          unzip "$BOOT_PACKAGE"
+          echo "✅ Boot package extracted"
+          ls -la boot-files/
+          
+          # 验证boot包文件完整性
+          echo "🔍 Verifying boot package integrity..."
+          if [ -f "boot-files/rootfs-uuid.txt" ]; then
+            ROOTFS_UUID=$(cat boot-files/rootfs-uuid.txt)
+            echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
+            echo "✅ RootFS UUID: $ROOTFS_UUID"
+          else
+            echo "❌ RootFS UUID file not found in boot package"
+            exit 1
+          fi
+          
+          if [ -f "boot-files/vmlinuz" ]; then
+            echo "✅ vmlinuz file found and accessible"
+            file "boot-files/vmlinuz"
+            ls -lh "boot-files/vmlinuz"
+          else
+            echo "❌ vmlinuz file not found in boot package"
+            exit 1
+          fi
+          
+          if [ -f "boot-files/initrd.img" ]; then
+            echo "✅ initrd.img file found and accessible"
+            file "boot-files/initrd.img"
+            ls -lh "boot-files/initrd.img"
+          else
+            echo "❌ initrd.img file not found in boot package"
+            exit 1
+          fi
+          
+          echo "✅ Boot package integrity verified successfully"
+        else
+          echo "❌ No boot package found"
+          exit 1
+        fi
+        
+        # 下载rootfs镜像（用于验证和参考）
+        echo "📥 Downloading rootfs image..."
         gh release download $RELEASE_TAG \
           --pattern "root-*$DISTRIBUTION*.zip" \
           --repo ${{ github.repository }} || {
@@ -100,11 +157,10 @@ jobs:
         
         ROOTFS_IMG=$(ls root-*.img | head -1)
         if [ -z "$ROOTFS_IMG" ]; then
-          echo "❌ No rootfs image found after extraction"
-          exit 1
+          echo "⚠️ No rootfs image found after extraction"
+        else
+          echo "✅ Rootfs image: $ROOTFS_IMG"
         fi
-        
-        echo "✅ Rootfs image: $ROOTFS_IMG"
         
     - name: Build boot image using script
       run: |
