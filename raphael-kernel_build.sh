@@ -38,6 +38,10 @@ log_error() {
     echo "[ERROR] $1"
 }
 
+log_warning() {
+    echo "[WARNING] $1"
+}
+
 # Cleanup function
 cleanup() {
     [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR" 2>/dev/null
