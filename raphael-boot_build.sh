@@ -80,6 +80,7 @@ parse_arguments() {
     ROOTFS_ZIP="${ROOTFS_ZIP:-}"
     OUTPUT_FILE="${OUTPUT_FILE:-}"
     USE_CACHE="${USE_CACHE:-${CACHE_ENABLED_DEFAULT}}"
+    DRY_RUN=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -115,6 +116,10 @@ parse_arguments() {
                 USE_CACHE=false
                 shift 1
                 ;;
+            --dry-run)
+                DRY_RUN=true
+                shift 1
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -148,12 +153,14 @@ OPTIONS:
     -o, --output FILE               Output boot image file
     --cache                         Enable build cache
     --no-cache                      Disable build cache [default: ${CACHE_ENABLED_DEFAULT}]
+    --dry-run                       Dry run mode (extract UUID only, no image creation)
     -h, --help                      Show this help message
 
 EXAMPLES:
     $0 -k 6.18 -d ubuntu -r root-ubuntu-6.18.img --cache
     $0 -k 6.18 -d ubuntu -z root-ubuntu-6.18.zip --no-cache
     $0 --kernel-version 6.18 --distribution ubuntu --output xiaomi-k20pro-boot.img
+    $0 --kernel-version 6.18 --distribution ubuntu --rootfs-image root-ubuntu-6.18.img --dry-run
 
 EOF
 }
@@ -327,43 +334,14 @@ handle_rootfs_file() {
 # Extract rootfs UUID and kernel files
 # ----------------------------- 
 extract_rootfs_uuid() {
-    log_info "Extracting UUID and kernel files..."
+    log_info "Extracting UUID from rootfs image..."
     
-    # 优先使用boot包中的文件
-    if [[ -d "boot-files" ]]; then
-        log_info "Using files from boot package"
-        
-        # 读取UUID文件
-        if [[ -f "boot-files/rootfs-uuid.txt" ]]; then
-            ROOTFS_UUID=$(cat "boot-files/rootfs-uuid.txt")
-            log_success "Rootfs UUID from boot package: $ROOTFS_UUID"
-        else
-            log_warning "UUID file not found in boot package, falling back to rootfs image"
-            extract_uuid_from_rootfs
-        fi
-        
-        # 检查kernel文件
-        if [[ -f "boot-files/vmlinuz" && -f "boot-files/initrd.img" ]]; then
-            log_success "Kernel files found in boot package"
-            # 这些文件将在copy_kernel_files函数中使用
-        else
-            log_warning "Kernel files not found in boot package, falling back to rootfs image"
-        fi
-    else
-        log_info "Boot package not found, extracting from rootfs image"
-        extract_uuid_from_rootfs
-    fi
-}
-
-# ----------------------------- 
-# Extract UUID from rootfs image (fallback)
-# ----------------------------- 
-extract_uuid_from_rootfs() {
     if [[ ! -f "$ROOTFS_IMAGE" ]]; then
         log_error "Rootfs image not found: $ROOTFS_IMAGE"
         return 1
     fi
     
+    # Extract UUID using blkid
     ROOTFS_UUID=$(sudo blkid -s UUID -o value "$ROOTFS_IMAGE")
     
     if [[ -z "$ROOTFS_UUID" ]]; then
@@ -371,7 +349,7 @@ extract_uuid_from_rootfs() {
         return 1
     fi
     
-    log_success "Rootfs UUID: $ROOTFS_UUID"
+    log_success "Rootfs UUID extracted: $ROOTFS_UUID"
 }
 
 # ----------------------------- 
@@ -530,14 +508,22 @@ main() {
     # Step 3: Handle rootfs file (supports img and zip)
     handle_rootfs_file
     
-    # Step 4: Download or create boot image
+    # Step 4: Extract rootfs UUID
+    extract_rootfs_uuid
+    
+    # If dry-run mode, just output the UUID and exit
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "Dry run mode - UUID extraction only"
+        echo "Rootfs UUID: $ROOTFS_UUID"
+        log_success "Dry run completed successfully"
+        exit 0
+    fi
+    
+    # Step 5: Download or create boot image
     local boot_file=$(download_boot_image)
     
-    # Step 5: Mount boot image
+    # Step 6: Mount boot image
     mount_boot_image "$boot_file"
-    
-    # Step 6: Extract rootfs UUID
-    extract_rootfs_uuid
     
     # Step 7: Copy kernel files
     copy_kernel_files

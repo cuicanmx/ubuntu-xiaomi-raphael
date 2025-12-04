@@ -51,69 +51,13 @@ jobs:
           rsync \
           jq
           
-    - name: Download rootfs and boot packages
+    - name: Download rootfs image
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        echo "📥 Downloading rootfs and boot packages..."
+        echo "📥 Downloading rootfs image..."
         
-        # 下载boot包（包含UUID、initrd.img、vmlinuz）
-        echo "📦 Downloading boot package..."
-        gh release download $RELEASE_TAG \
-          --pattern "boot-files-*$DISTRIBUTION*.zip" \
-          --repo ${{ github.repository }} || {
-          echo "⚠️ Failed to download boot package from release, trying artifacts"
-          # 从工作流产物下载
-          gh run download --name "xiaomi-raphael-rootfs_${DISTRIBUTION}_${KERNEL_VERSION}" || {
-            echo "❌ No boot package found"
-            exit 1
-          }
-        }
-        
-        # 解压boot包
-        BOOT_PACKAGE=$(ls boot-files-*.zip | head -1)
-        if [ -n "$BOOT_PACKAGE" ]; then
-          echo "🗜️ Extracting boot package: $BOOT_PACKAGE"
-          unzip "$BOOT_PACKAGE"
-          echo "✅ Boot package extracted"
-          ls -la boot-files/
-          
-          # 验证boot包文件完整性
-          echo "🔍 Verifying boot package integrity..."
-          if [ -f "boot-files/rootfs-uuid.txt" ]; then
-            ROOTFS_UUID=$(cat boot-files/rootfs-uuid.txt)
-            echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
-            echo "✅ RootFS UUID: $ROOTFS_UUID"
-          else
-            echo "❌ RootFS UUID file not found in boot package"
-            exit 1
-          fi
-          
-          if [ -f "boot-files/vmlinuz" ]; then
-            echo "✅ vmlinuz file found and accessible"
-            file "boot-files/vmlinuz"
-            ls -lh "boot-files/vmlinuz"
-          else
-            echo "❌ vmlinuz file not found in boot package"
-            exit 1
-          fi
-          
-          if [ -f "boot-files/initrd.img" ]; then
-            echo "✅ initrd.img file found and accessible"
-            file "boot-files/initrd.img"
-            ls -lh "boot-files/initrd.img"
-          else
-            echo "❌ initrd.img file not found in boot package"
-            exit 1
-          fi
-          
-          echo "✅ Boot package integrity verified successfully"
-        else
-          echo "❌ No boot package found"
-          exit 1
-        fi
-        
-        # 下载rootfs镜像（用于验证和参考）
+        # 下载rootfs镜像（用于提取内核文件和UUID）
         echo "📥 Downloading rootfs image..."
         gh release download $RELEASE_TAG \
           --pattern "root-*$DISTRIBUTION*.zip" \
@@ -144,9 +88,24 @@ jobs:
         
         ROOTFS_IMG=$(ls root-*.img | head -1)
         if [ -z "$ROOTFS_IMG" ]; then
-          echo "⚠️ No rootfs image found after extraction"
+          echo "❌ No rootfs image found after extraction"
+          exit 1
         else
           echo "✅ Rootfs image: $ROOTFS_IMG"
+          
+          # 验证rootfs镜像完整性
+          echo "🔍 Verifying rootfs image integrity..."
+          file "$ROOTFS_IMG"
+          ls -lh "$ROOTFS_IMG"
+          
+          # 检查镜像大小
+          IMG_SIZE=$(stat -c%s "$ROOTFS_IMG")
+          MIN_SIZE=$((500 * 1024 * 1024))  # 500MB
+          if [ "$IMG_SIZE" -ge "$MIN_SIZE" ]; then
+            echo "✅ Rootfs image size is acceptable: $(($IMG_SIZE/1024/1024))MB"
+          else
+            echo "⚠️ Rootfs image size ($(($IMG_SIZE/1024/1024))MB) is smaller than expected"
+          fi
         fi
         
     - name: Build boot image using script
@@ -163,13 +122,21 @@ jobs:
           --rootfs-image "$ROOTFS_IMG" \
           --output "xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         
-        # Extract ROOTFS_UUID from script output
-        if grep -q "ROOTFS_UUID" output/boot/boot-image-info.txt; then
-          ROOTFS_UUID=$(grep "ROOTFS_UUID" output/boot/boot-image-info.txt | cut -d'=' -f2)
-          echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
-        fi
-        
         echo "✅ Boot image built successfully"
+        
+        # 显示构建结果
+        echo "📊 Boot image details:"
+        ls -lh xiaomi-k20pro-boot-*.img
+        
+        # 从脚本输出中提取ROOTFS_UUID
+        echo "🔍 Extracting ROOTFS_UUID from script output..."
+        ROOTFS_UUID=$(./raphael-boot_build.sh --kernel-version "$KERNEL_VERSION" --distribution "$DISTRIBUTION" --rootfs-image "$ROOTFS_IMG" --dry-run 2>&1 | grep "Rootfs UUID:" | tail -1 | awk '{print $NF}' || echo "")
+        if [ -n "$ROOTFS_UUID" ]; then
+          echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
+          echo "✅ Extracted ROOTFS_UUID: $ROOTFS_UUID"
+        else
+          echo "⚠️ Could not extract ROOTFS_UUID from script output"
+        fi
         
     - name: Verify boot image
       run: |
