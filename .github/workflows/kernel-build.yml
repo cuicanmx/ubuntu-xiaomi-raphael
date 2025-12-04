@@ -145,4 +145,7 @@ jobs:
             output/kernel/kernel-*.tar.gz
             output/kernel/kernel-*.zip
             output/kernel/*.deb
+            output/kernel/kernel-*-raphael.tar.gz
+            output/kernel/kernel-*-raphael.zip
+            output/kernel/kernel-*-raphael.*
         if: ${{ github.event.inputs.upload_to_release == true }}
