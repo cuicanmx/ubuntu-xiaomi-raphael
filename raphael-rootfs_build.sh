@@ -19,6 +19,10 @@ log_success() {
     echo "[SUCCESS] $1"
 }
 
+log_error() {
+    echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1"
+}
+
 main() {
     log_info "Starting rootfs build"
     
@@ -99,6 +103,9 @@ main() {
     
     install_deb "linux-xiaomi-raphael_*.deb" "linux kernel"
     install_deb "firmware-xiaomi-raphael_*.deb" "firmware"
+    
+    # 安装ALSA包的依赖
+    execute_quiet "chroot '$ROOTDIR' apt install -y alsa-ucm-conf" "Installing ALSA dependencies"
     install_deb "alsa-xiaomi-raphael_*.deb" "ALSA"
     
     execute_quiet "rm -f '$ROOTDIR/tmp/*-xiaomi-raphael*.deb'" "Removing temporary deb packages"
