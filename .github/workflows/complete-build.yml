@@ -390,7 +390,7 @@ jobs:
           
           ## 🗂️ 构建产物
           
-          ### � 完整构建包
+          ### 📦 完整构建包
           - **组合镜像包**: xiaomi-raphael-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
           - **包含内容**: RootFS 系统镜像 + Boot 启动镜像
           
