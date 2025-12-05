@@ -24,12 +24,8 @@ cleanup() {
         sudo umount "$MOUNT_DIR" 2>/dev/null || true
     fi
     
-    if mountpoint -q "$ROOTFS_MOUNT_DIR" 2>/dev/null; then
-        sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || true
-    fi
-    
     # Remove temporary directories
-    rm -rf "$MOUNT_DIR" "$ROOTFS_MOUNT_DIR" "$TEMP_DIR" 2>/dev/null || true
+    rm -rf "$MOUNT_DIR" "$TEMP_DIR" 2>/dev/null || true
     
     log_success "Cleanup completed"
 }
@@ -119,8 +115,7 @@ validate_arguments() {
     # Create temporary directories
     TEMP_DIR=$(mktemp -d)
     MOUNT_DIR="$TEMP_DIR/boot-mount"
-    ROOTFS_MOUNT_DIR="$TEMP_DIR/rootfs-mount"
-    mkdir -p "$MOUNT_DIR" "$ROOTFS_MOUNT_DIR"
+    mkdir -p "$MOUNT_DIR"
 }
 
 # ----------------------------- 
@@ -139,33 +134,9 @@ download_boot_image() {
         log_success "Boot image downloaded successfully"
         echo "$boot_file"
     else
-        log_warning "Failed to download boot image, creating empty one"
-        create_empty_boot_image "$boot_file"
-        echo "$boot_file"
+        log_error "Failed to download boot image"
+        return 1
     fi
-}
-
-# ----------------------------- 
-# Create empty boot image
-# ----------------------------- 
-create_empty_boot_image() {
-    local boot_file="$1"
-    
-    log_info "Creating empty boot image (${BOOT_IMAGE_SIZE})..."
-    
-    # Create empty image file
-    dd if=/dev/zero of="$boot_file" bs=1M count=$(echo "${BOOT_IMAGE_SIZE}" | sed 's/[^0-9]//g') status=none
-    
-    # Partition and format
-    parted -s "$boot_file" mklabel gpt
-    parted -s "$boot_file" mkpart primary fat32 1MiB 100%
-    
-    # Create loop device and format
-    local loop_dev=$(sudo losetup --find --show "$boot_file")
-    sudo mkfs.fat -F32 "${loop_dev}p1"
-    sudo losetup -d "$loop_dev"
-    
-    log_success "Empty boot image created: $boot_file"
 }
 
 # ----------------------------- 
@@ -176,39 +147,11 @@ mount_boot_image() {
     
     log_info "Mounting boot image..."
     
-    # First, try to setup loop device manually
-    local loop_dev=$(sudo losetup --find --show -P "$boot_file" 2>/dev/null)
-    if [[ -n "$loop_dev" ]]; then
-        # Try to mount the first partition
-        if [[ -b "${loop_dev}p1" ]]; then
-            sudo mount "${loop_dev}p1" "$MOUNT_DIR" || {
-                log_warning "Failed to mount partition, trying to format..."
-                sudo mkfs.fat -F32 "${loop_dev}p1"
-                sudo mount "${loop_dev}p1" "$MOUNT_DIR" || {
-                    sudo losetup -d "$loop_dev"
-                    log_error "Failed to mount boot image after formatting"
-                    return 1
-                }
-            }
-        else
-            # No partitions found, try to mount the entire device
-            sudo mount "$loop_dev" "$MOUNT_DIR" || {
-                log_warning "No partitions found, creating new partition..."
-                sudo mkfs.fat -F32 "$loop_dev"
-                sudo mount "$loop_dev" "$MOUNT_DIR" || {
-                    sudo losetup -d "$loop_dev"
-                    log_error "Failed to mount boot image"
-                    return 1
-                }
-            }
-        fi
-    else
-        # Fallback to direct mount
-        sudo mount -o loop "$boot_file" "$MOUNT_DIR" || {
-            log_error "Failed to mount boot image"
-            return 1
-        }
-    fi
+    # Simple mount using loop device
+    sudo mount -o loop "$boot_file" "$MOUNT_DIR" || {
+        log_error "Failed to mount boot image"
+        return 1
+    }
     
     log_success "Boot image mounted at: $MOUNT_DIR"
     
@@ -218,34 +161,10 @@ mount_boot_image() {
 }
 
 # ----------------------------- 
-# Handle rootfs file (supports img and zip formats)
+# Handle rootfs file
 # ----------------------------- 
 handle_rootfs_file() {
-    if [[ -n "$ROOTFS_ZIP" ]]; then
-        log_info "Processing rootfs zip file: $ROOTFS_ZIP"
-        
-        if [[ ! -f "$ROOTFS_ZIP" ]]; then
-            log_error "Rootfs zip file not found: $ROOTFS_ZIP"
-            return 1
-        fi
-        
-        # Extract zip file
-        log_info "Extracting rootfs zip file..."
-        unzip -q "$ROOTFS_ZIP" || {
-            log_error "Failed to extract zip file: $ROOTFS_ZIP"
-            return 1
-        }
-        
-        # Find extracted img file
-        ROOTFS_IMAGE=$(ls root-*.img | head -1)
-        if [[ -z "$ROOTFS_IMAGE" ]]; then
-            log_error "No img file found in zip archive"
-            return 1
-        fi
-        
-        log_success "Extracted rootfs image: $ROOTFS_IMAGE"
-        
-    elif [[ -n "$ROOTFS_IMAGE" ]]; then
+    if [[ -n "$ROOTFS_IMAGE" ]]; then
         log_info "Using rootfs image file: $ROOTFS_IMAGE"
         
         if [[ ! -f "$ROOTFS_IMAGE" ]]; then
@@ -259,7 +178,7 @@ handle_rootfs_file() {
 }
 
 # ----------------------------- 
-# Extract rootfs UUID and kernel files
+# Extract rootfs UUID
 # ----------------------------- 
 extract_rootfs_uuid() {
     log_info "Extracting UUID from rootfs image..."
@@ -280,44 +199,73 @@ extract_rootfs_uuid() {
     log_success "Rootfs UUID extracted: $ROOTFS_UUID"
 }
 
+# ----------------------------- 
 # Copy kernel files from rootfs to boot image
+# ----------------------------- 
 copy_kernel_files() {
-    sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR" || {
+    log_info "Copying kernel files from rootfs to boot image..."
+    
+    # Mount rootfs image temporarily
+    local rootfs_mount="$TEMP_DIR/rootfs-mount"
+    mkdir -p "$rootfs_mount"
+    
+    sudo mount -o loop "$ROOTFS_IMAGE" "$rootfs_mount" || {
         log_error "Failed to mount rootfs image"
         return 1
     }
     
+    # Create directories in boot image
     sudo mkdir -p "$MOUNT_DIR/dtbs"
+    sudo mkdir -p "$MOUNT_DIR/loader/entries"
     
     # Copy device tree binaries
-    [ -d "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" ] && sudo cp -r "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" "$MOUNT_DIR/dtbs/"
+    if [ -d "$rootfs_mount/boot/dtbs/qcom" ]; then
+        sudo cp -r "$rootfs_mount/boot/dtbs/qcom" "$MOUNT_DIR/dtbs/"
+        log_success "Device tree binaries copied"
+    else
+        log_warning "Device tree binaries not found"
+    fi
     
     # Copy kernel config
-    local config_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "config-*" | head -1)
-    [[ -n "$config_file" ]] && sudo cp "$config_file" "$MOUNT_DIR/"
+    local config_file=$(find "$rootfs_mount/boot" -name "config-*" | head -1)
+    if [[ -n "$config_file" ]]; then
+        sudo cp "$config_file" "$MOUNT_DIR/"
+        log_success "Kernel config copied"
+    else
+        log_warning "Kernel config not found"
+    fi
     
     # Copy initrd image
-    local initrd_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" | head -1)
-    [[ -n "$initrd_file" ]] && sudo cp "$initrd_file" "$MOUNT_DIR/initramfs" || {
+    local initrd_file=$(find "$rootfs_mount/boot" -name "initrd.img-*" | head -1)
+    if [[ -n "$initrd_file" ]]; then
+        sudo cp "$initrd_file" "$MOUNT_DIR/initramfs"
+        log_success "Initrd image copied"
+    else
         log_error "Initrd image not found"
-        sudo umount "$ROOTFS_MOUNT_DIR"
+        sudo umount "$rootfs_mount"
         return 1
-    }
+    fi
     
     # Copy vmlinuz
-    local vmlinuz_file=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" | head -1)
-    [[ -n "$vmlinuz_file" ]] && sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi" || {
+    local vmlinuz_file=$(find "$rootfs_mount/boot" -name "vmlinuz-*" | head -1)
+    if [[ -n "$vmlinuz_file" ]]; then
+        sudo cp "$vmlinuz_file" "$MOUNT_DIR/linux.efi"
+        log_success "Vmlinuz copied"
+    else
         log_error "Vmlinuz not found"
-        sudo umount "$ROOTFS_MOUNT_DIR"
+        sudo umount "$rootfs_mount"
         return 1
-    }
+    fi
     
-    sudo umount "$ROOTFS_MOUNT_DIR"
+    sudo umount "$rootfs_mount"
+    rmdir "$rootfs_mount"
 }
 
+# ----------------------------- 
 # Update boot loader configuration
+# ----------------------------- 
 update_boot_config() {
-    sudo mkdir -p "$MOUNT_DIR/loader/entries"
+    log_info "Updating boot loader configuration..."
     
     sudo tee "$MOUNT_DIR/loader/entries/ubuntu.conf" > /dev/null << EOF
 title  Ubuntu
@@ -327,46 +275,80 @@ initrd  initramfs
 
 options console=tty0 loglevel=3 splash root=UUID=$ROOTFS_UUID rw
 EOF
+    
+    log_success "Boot configuration updated"
 }
 
+# ----------------------------- 
 # Verify boot image contents
+# ----------------------------- 
 verify_boot_image() {
+    log_info "Verifying boot image contents..."
+    
     [[ ! -f "$MOUNT_DIR/linux.efi" ]] && log_error "linux.efi not found" && return 1
     [[ ! -f "$MOUNT_DIR/initramfs" ]] && log_error "initramfs not found" && return 1
     [[ ! -f "$MOUNT_DIR/loader/entries/ubuntu.conf" ]] && log_error "Boot configuration not found" && return 1
+    
+    log_success "Boot image verification passed"
 }
 
-# Unmount and save boot image
+# ----------------------------- 
+# Finalize boot image
+# ----------------------------- 
 finalize_boot_image() {
     local original_boot="$1"
+    
+    log_info "Finalizing boot image..."
+    
+    # Unmount boot image
     sudo umount "$MOUNT_DIR"
+    
+    # Copy to output file
     cp "$original_boot" "$OUTPUT_FILE"
+    
+    log_success "Boot image created: $OUTPUT_FILE"
 }
 
+# ----------------------------- 
 # Main function
+# ----------------------------- 
 main() {
     parse_arguments "$@"
     validate_arguments
     
+    log_info "Starting boot image creation for $DISTRIBUTION (Kernel $KERNEL_VERSION)"
+    
+    # Handle rootfs file
     handle_rootfs_file
+    
+    # Extract rootfs UUID
     extract_rootfs_uuid
     
     if [[ "$DRY_RUN" == true ]]; then
-        echo "Rootfs UUID: $ROOTFS_UUID"
+        log_success "Dry run completed - UUID extracted: $ROOTFS_UUID"
         exit 0
     fi
     
+    # Download boot image
     local boot_file=$(download_boot_image)
+    
+    # Mount boot image
     mount_boot_image "$boot_file"
+    
+    # Copy kernel files
     copy_kernel_files
+    
+    # Update boot configuration
     update_boot_config
+    
+    # Verify boot image
     verify_boot_image
+    
+    # Finalize boot image
     finalize_boot_image "$boot_file"
+    
+    log_success "Boot image creation completed successfully"
 }
 
-# ----------------------------- 
-# Script execution
-# ----------------------------- 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
-fi
+# Run main function
+main "$@"
