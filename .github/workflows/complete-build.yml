@@ -1,6 +1,6 @@
-# Enhanced workflow for building kernel and rootfs with multi-distro support
+# Enhanced workflow for building both rootfs and boot image with multi-distro support
 
-name: Build Raphael RootFS
+name: Complete Build (RootFS + Boot Image)
 
 permissions:
   contents: write
@@ -59,9 +59,9 @@ env:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # Build root filesystem
-  rootfs:
-    name: Build RootFS
+  # Build root filesystem and boot image in sequence
+  complete-build:
+    name: Complete Build (RootFS + Boot Image)
     runs-on: ubuntu-24.04-arm  
     steps:
     - name: Checkout repository
@@ -69,7 +69,7 @@ jobs:
       
     - name: Setup environment variables
       run: |
-        echo "Building rootfs for distribution: $DISTRIBUTION"
+        echo "Building for distribution: $DISTRIBUTION"
         echo "Kernel version: $KERNEL_VERSION"
         echo "Kernel source: $KERNEL_SOURCE"
         echo "Release tag: $RELEASE_TAG"
@@ -77,7 +77,7 @@ jobs:
         
     - name: Setup inputs
       run: |
-        echo "🚀 Starting rootfs build"
+        echo "🚀 Starting complete build process"
         echo "📦 Distribution: $DISTRIBUTION"
         echo "🔧 Kernel Version: $KERNEL_VERSION"
         echo "📎 Kernel Source: $KERNEL_SOURCE"
@@ -140,18 +140,17 @@ jobs:
           fi
         done
         
-    # 删除artifacts获取方式，只保留GitHub Releases作为内核包来源
-    - name: Install rootfs build dependencies
+    - name: Install build dependencies
       run: |
-         echo "📦 Installing rootfs build dependencies..."
+         echo "📦 Installing build dependencies..."
          sudo apt update
          
          # 基础依赖包
-         BASE_DEPS="fakeroot cpio kmod rsync wget curl file parted dosfstools e2fsprogs util-linux systemd-container jq kpartx"
+         BASE_DEPS="fakeroot cpio kmod rsync wget curl file parted dosfstools e2fsprogs util-linux systemd-container jq kpartx binfmt-support"
          
          # 在ARM64架构上安装依赖
          echo "🔧 Running on ARM64, installing native dependencies..."
-         sudo apt install -y binfmt-support $BASE_DEPS
+         sudo apt install -y $BASE_DEPS
 
     - name: Build rootfs
       run: |
@@ -205,7 +204,7 @@ jobs:
          
          sudo kpartx -d "$ROOTFS_IMAGE"
 
-    - name: Compress rootfs image to zip
+    - name: Compress rootfs image
       run: |
          ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
          ZIP_FILE="root-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
@@ -213,40 +212,79 @@ jobs:
          zip -9 "$ZIP_FILE" "$ROOTFS_IMAGE"
          unzip -t "$ZIP_FILE" > /dev/null 2>&1 || { echo "Zip file integrity check failed"; exit 1; }
          
+    - name: Build boot image using script
+      run: |
+        chmod +x raphael-boot_build.sh
+        
+        ROOTFS_IMG="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        BOOT_OUTPUT="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        
+        ./raphael-boot_build.sh \
+          --kernel-version "$KERNEL_VERSION" \
+          --distribution "$DISTRIBUTION" \
+          --rootfs-image "$ROOTFS_IMG" \
+          --output "$BOOT_OUTPUT"
+        
+        ROOTFS_UUID=$(./raphael-boot_build.sh --kernel-version "$KERNEL_VERSION" --distribution "$DISTRIBUTION" --rootfs-image "$ROOTFS_IMG" --dry-run 2>&1 | grep "Rootfs UUID:" | tail -1 | awk '{print $NF}' || echo "")
+        [ -n "$ROOTFS_UUID" ] && echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
+        
+    - name: Verify boot image
+      run: |
+        BOOT_IMG="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        [ -n "$BOOT_IMG" ] || { echo "Boot image not found"; exit 1; }
+        
+        IMG_SIZE=$(stat -c%s "$BOOT_IMG")
+        MIN_SIZE=$((200 * 1024 * 1024))
+        MAX_SIZE=$((500 * 1024 * 1024))
+        [ "$IMG_SIZE" -ge "$MIN_SIZE" ] && [ "$IMG_SIZE" -le "$MAX_SIZE" ] || echo "Boot image size outside expected range"
+        
+        mkdir -p /tmp/boot-mount
+        sudo mount -o loop "$BOOT_IMG" /tmp/boot-mount
+        
+        essential_files=("/tmp/boot-mount/EFI/boot/bootaa64.efi" "/tmp/boot-mount/loader/entries/ubuntu.conf" "/tmp/boot-mount/linux.efi" "/tmp/boot-mount/initramfs")
+        for file in "${essential_files[@]}"; do
+          [ -f "$file" ] || echo "Missing: $file"
+        done
+        
+        [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ] && grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf || echo "Kernel version in boot entry does not match"
+        
+        sudo umount /tmp/boot-mount
+        rmdir /tmp/boot-mount
+        
     - name: Prepare release files
       run: |
         echo "📁 Preparing release-files directory"
         rm -rf release-files || true
         mkdir -p release-files
-        # Copy kernel packages from output/kernel directory
-        if [ -d "output/kernel" ]; then
-          cp -r output/kernel/* release-files/ || true
-        fi
-        # Copy DEBs and rootfs artifacts into release-files preserving structure
-        find . -type f \( -name "*.deb" -o -name "*.7z" -o -name "*.zip" -o -name "*.img" -o -name "*.tar.gz" \) -exec cp --parents {} release-files/ \; || true
+        # Copy all build artifacts
+        cp -r *.img release-files/ 2>/dev/null || true
+        cp -r *.zip release-files/ 2>/dev/null || true
+        cp -r *.7z release-files/ 2>/dev/null || true
+        cp -r *.deb release-files/ 2>/dev/null || true
         echo "📋 Release files:"
         ls -la release-files || true
-        echo "� Release files structure:"
+        echo "📁 Release files structure:"
         find release-files -type f | head -20 || true
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.RELEASE_TAG }}
-        name: "🎯 小米 Raphael ${{ github.event.inputs.distribution }} 发行版 - 内核 ${{ github.event.inputs.kernel_version }}"
+        name: "🎯 小米 Raphael 完整构建 ${{ github.event.inputs.kernel_version }} - RootFS + Boot Image"
         body: |
-          # 🎯 小米 Raphael (K20 Pro) ${{ github.event.inputs.distribution }} 发行版
+          # 🎯 小米 Raphael (K20 Pro) 完整构建 ${{ github.event.inputs.kernel_version }}
           
-          ## 📦 发行版信息
+          ## 📦 构建信息
           
-          ### 🏷️ 基本信息
+          ### 📊 基本信息
           - **设备型号**: 小米 Raphael (K20 Pro)
-          - **发行版本**: ${{ github.event.inputs.distribution }}
           - **内核版本**: ${{ github.event.inputs.kernel_version }}
+          - **发行版本**: ${{ github.event.inputs.distribution }}
           - **桌面环境**: ${{ github.event.inputs.desktop_environment }}
           - **架构平台**: ARM64
+          - **目标平台**: SM8150 (骁龙 855)
           
-          ### 📊 构建详情
+          ### 🔧 构建详情
           - **构建日期**: ${{ github.event.repository.created_at }}
           - **构建ID**: ${{ github.run_id }}
           - **发布标签**: ${{ env.RELEASE_TAG }}
@@ -255,12 +293,12 @@ jobs:
           
           ### 🔧 RootFS 系统镜像
           - **完整镜像**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          - **压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip (推荐用于启动镜像构建)
+          - **压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
+          - **7z压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
           
-          ### 🚀 启动文件包
-          - **启动包**: boot-files-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
-            - 包含 UUID、initrd.img 和 vmlinuz 文件
-            - 用于启动镜像创建
+          ### 🚀 Boot 启动镜像
+          - **完整启动镜像**: xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          - **包含内容**: 内核、设备树、初始化脚本
           
           ## 📋 使用指南
           
@@ -271,13 +309,19 @@ jobs:
           
           # 刷入设备 (根据您的设置调整)
           fastboot flash system root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          
+          # 刷入启动镜像
+          fastboot flash boot xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
+          
+          # 重启设备
+          fastboot reboot
           ```
           
           ### 💡 使用提示
-          - 启动镜像构建时，建议下载 .zip 文件以获得更快的传输速度
-          - 使用前请从 .zip 文件中提取 .img 镜像文件
+          - 建议先使用 fastboot boot 命令临时测试启动镜像
           - 确保设备已解锁 bootloader
           - 建议在刷机前备份重要数据
+          - 可以使用 7z 压缩版本以节省存储空间
           
           ## 🎯 设备兼容性
           
@@ -314,8 +358,5 @@ jobs:
           ### Q: 支持哪些桌面环境？
           A: 当前支持 ${{ github.event.inputs.desktop_environment }} 桌面环境。
           
-          ---
-          
+          ---          
           *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
-        files: |
-          release-files/**
