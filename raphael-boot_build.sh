@@ -120,7 +120,7 @@ main() {
     # Step 1: Download boot image
     log_info "Step 1: Downloading boot image..."
     
-    BOOT_SOURCE_URL="https://github.com/GengWei1997/kernel-deb/releases/download/v1.0.0/xiaomi-k20pro-boot.img"
+    BOOT_SOURCE_URL="https://github.com/cuicanmx/ubuntu-xiaomi-raphael/releases/download/xiaomi-k20pro-boot/xiaomi-k20pro-boot.img"
     BOOT_FILE="$TEMP_DIR/original-boot.img"
     
     if ! wget -O "$BOOT_FILE" "$BOOT_SOURCE_URL"; then

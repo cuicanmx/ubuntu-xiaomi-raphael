@@ -39,9 +39,7 @@ main() {
     echo "xiaomi-raphael" | tee "$ROOTDIR/etc/hostname" &&
     echo -e "127.0.0.1 localhost\n127.0.1.1 xiaomi-raphael" | tee "$ROOTDIR/etc/hosts" &&
     
-    # 在ARM64架构上设置二进制格式支持
-    [ ! -f /proc/sys/fs/binfmt_misc/aarch64 ] &&
-    echo ':aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff::' | tee /proc/sys/fs/binfmt_misc/register &&
+    # 跳过ARM64二进制格式支持设置
     
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
     export DEBIAN_FRONTEND=noninteractive
@@ -81,8 +79,21 @@ main() {
     
     chroot "$ROOTDIR" apt clean &&
     
-    # 清理二进制格式注册
-    echo -1 | tee /proc/sys/fs/binfmt_misc/aarch64 2>/dev/null || true &&
+    # 跳过二进制格式注册清理
+    
+    # 检查boot目录内容
+    log_info "Checking boot directory content..."
+    if [ -d "$ROOTDIR/boot" ]; then
+        echo "Boot directory content:";
+        ls -la "$ROOTDIR/boot";
+    fi
+    
+    # 列出安装的包
+    log_info "Listing installed packages..."
+    if [ -f "$ROOTDIR/var/lib/dpkg/status" ]; then
+        chroot "$ROOTDIR" dpkg -l | head -20;
+        echo "... showing first 20 packages, use 'chroot $ROOTDIR dpkg -l' to see all";
+    fi
     
     umount "$ROOTDIR/sys" &&
     umount "$ROOTDIR/proc" &&
