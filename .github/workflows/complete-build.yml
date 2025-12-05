@@ -89,68 +89,89 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        set -e  # Exit on any error
+        
         echo "📥 Downloading kernel packages from GitHub Release: $RELEASE_TAG"
         
-        # Download compressed kernel archive only
+        # Download compressed kernel archive only (silent mode)
         echo "🔍 Downloading compressed kernel archive..."
-        gh release download $RELEASE_TAG \
+        if ! gh release download $RELEASE_TAG \
           --pattern "kernel-*-raphael.tar.gz" \
           --pattern "kernel-*-raphael.zip" \
-          --repo ${{ github.repository }}
-        
-        # Extract the compressed archive
-        tar_file=$(find . -name "kernel-*-raphael.tar.gz" -type f | head -1)
-        zip_file=$(find . -name "kernel-*-raphael.zip" -type f | head -1)
-        
-        if [ -f "$tar_file" ]; then
-          echo "📦 Extracting tar.gz archive: $tar_file"
-          tar -xzf "$tar_file"
-          echo "✅ tar.gz archive extracted successfully"
-        elif [ -f "$zip_file" ]; then
-          echo "📦 Extracting zip archive: $zip_file"
-          unzip -q "$zip_file"
-          echo "✅ zip archive extracted successfully"
-        else
-          echo "❌ No compressed kernel archive found"
+          --repo ${{ github.repository }} >/dev/null 2>&1; then
+          echo "❌ Failed to download kernel packages"
           echo "📦 Available files in release:"
           gh release view $RELEASE_TAG --repo ${{ github.repository }} --json assets --jq '.assets[].name'
           exit 1
         fi
         
+        # Extract the compressed archive
+        echo "📦 Extracting kernel archive..."
+        tar_file=$(find . -name "kernel-*-raphael.tar.gz" -type f | head -1)
+        zip_file=$(find . -name "kernel-*-raphael.zip" -type f | head -1)
+        
+        if [ -f "$tar_file" ]; then
+          tar -xzf "$tar_file" >/dev/null 2>&1
+          echo "✅ tar.gz archive extracted successfully"
+        elif [ -f "$zip_file" ]; then
+          unzip -q "$zip_file"
+          echo "✅ zip archive extracted successfully"
+        else
+          echo "❌ No compressed kernel archive found"
+          echo "📦 Available files:"
+          ls -la
+          exit 1
+        fi
+        
         # Verify extracted packages
-        echo "🔍 Verifying extracted kernel packages:"
+        echo "🔍 Verifying extracted kernel packages..."
         
         # Use wildcard pattern to match actual package names with full version
         REQUIRED_PACKAGES=("linux-xiaomi-raphael_*_arm64.deb" 
                           "firmware-xiaomi-raphael_*_arm64.deb"
                           "alsa-xiaomi-raphael_*_arm64.deb")
         
+        all_found=true
         for pkg_pattern in "${REQUIRED_PACKAGES[@]}"; do
           # Find the actual package file matching the pattern
           pkg_file=$(find . -name "$pkg_pattern" -type f | head -1)
           
           if [ -f "$pkg_file" ]; then
             echo "✅ Found: $pkg_file"
-            dpkg-deb -I "$pkg_file" || echo "⚠️ Package verification failed for $pkg_file"
+            # Verify package structure (silent)
+            dpkg-deb -I "$pkg_file" >/dev/null 2>&1 || echo "⚠️ Package verification failed for $pkg_file"
           else
             echo "❌ Missing package matching pattern: $pkg_pattern"
-            echo "📁 Available files:"
-            ls -la *.deb 2>/dev/null || echo "No .deb files found"
-            exit 1
+            all_found=false
           fi
         done
         
+        if [ "$all_found" = false ]; then
+          echo "📁 Available .deb files:"
+          ls -la *.deb 2>/dev/null || echo "No .deb files found"
+          exit 1
+        fi
+        
     - name: Install build dependencies
       run: |
+         set -e  # Exit on any error
+         
          echo "📦 Installing build dependencies..."
-         sudo apt update
+         echo "🔄 Updating package lists..."
+         sudo apt update -y >/dev/null 2>&1 || { echo "❌ Failed to update package lists"; exit 1; }
          
          # 基础依赖包
          BASE_DEPS="fakeroot cpio kmod rsync wget curl file parted dosfstools e2fsprogs util-linux systemd-container jq kpartx binfmt-support"
          
-         # 在ARM64架构上安装依赖
+         # 在ARM64架构上安装依赖（简化输出）
          echo "🔧 Running on ARM64, installing native dependencies..."
-         sudo apt install -y $BASE_DEPS
+         if ! sudo apt install -y $BASE_DEPS >/dev/null 2>&1; then
+           echo "❌ Failed to install build dependencies"
+           echo "📋 Full installation output:"
+           sudo apt install -y $BASE_DEPS
+           exit 1
+         fi
+         echo "✅ Build dependencies installed successfully"
 
     - name: Build rootfs
       run: |
@@ -176,80 +197,182 @@ jobs:
 
     - name: Validate rootfs build artifacts
       run: |
-         # Validate rootfs build artifacts
-         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-         [ -f "$ROOTFS_IMAGE" ] || { echo "Missing rootfs image file: $ROOTFS_IMAGE"; exit 1; }
-         [ -s "$ROOTFS_IMAGE" ] || { echo "RootFS image is empty or invalid"; exit 1; }
+         set -e  # Exit on any error
          
-         # Mount and verify content
-         sudo kpartx -a "$ROOTFS_IMAGE"
+         echo "🔍 Validating rootfs build artifacts..."
+         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+         
+         # Check if image exists and is not empty
+         if [ ! -f "$ROOTFS_IMAGE" ]; then
+           echo "❌ Missing rootfs image file: $ROOTFS_IMAGE"
+           echo "📁 Available files:"
+           ls -la *.img
+           exit 1
+         fi
+         
+         if [ ! -s "$ROOTFS_IMAGE" ]; then
+           echo "❌ RootFS image is empty or invalid"
+           exit 1
+         fi
+         
+         echo "✅ Rootfs image found: $ROOTFS_IMAGE"
+         echo "📊 Image size: $(du -h "$ROOTFS_IMAGE" | cut -f1)"
+         
+         # Mount and verify content (simplified)
+         echo "🔄 Mounting rootfs for content verification..."
+         sudo kpartx -a "$ROOTFS_IMAGE" >/dev/null 2>&1 || { echo "❌ Failed to mount rootfs for verification"; exit 1; }
          sleep 2
          
          if [ -b /dev/mapper/loop0p2 ]; then
            sudo mkdir -p /mnt/rootfs
-           sudo mount /dev/mapper/loop0p2 /mnt/rootfs
+           sudo mount /dev/mapper/loop0p2 /mnt/rootfs >/dev/null 2>&1 || { echo "❌ Failed to mount rootfs partition"; exit 1; }
            
            # Check key files
+           echo "🔍 Checking key files in rootfs..."
            key_files=("/mnt/rootfs/etc/hostname" "/mnt/rootfs/etc/fstab" "/mnt/rootfs/boot/vmlinuz*" "/mnt/rootfs/lib/modules")
+           all_found=true
            for file in "${key_files[@]}"; do
-             [ -e "$file" ] || echo "Missing: $file"
+             if [ -e "$file" ]; then
+               echo "✅ Found: $file"
+             else
+               echo "⚠️ Missing: $file"
+               all_found=false
+             fi
            done
            
            # Check kernel modules
-           ls /mnt/rootfs/lib/modules/$KERNEL_VERSION* 1> /dev/null 2>&1 || echo "Kernel modules not found"
+           if ls /mnt/rootfs/lib/modules/$KERNEL_VERSION* 1> /dev/null 2>&1; then
+             echo "✅ Kernel modules found"
+           else
+             echo "⚠️ Kernel modules not found"
+           fi
            
-           sudo umount /mnt/rootfs
-           sudo rmdir /mnt/rootfs
+           # Cleanup
+           sudo umount /mnt/rootfs >/dev/null 2>&1 || echo "⚠️ Failed to unmount rootfs"
+           sudo rmdir /mnt/rootfs 2>/dev/null || true
          fi
          
-         sudo kpartx -d "$ROOTFS_IMAGE"
+         sudo kpartx -d "$ROOTFS_IMAGE" >/dev/null 2>&1 || echo "⚠️ Failed to clean up loop device"
+         echo "✅ Rootfs validation completed"
 
     - name: Compress rootfs image
       run: |
+         set -e  # Exit on any error
+         
          ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
          ZIP_FILE="root-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
          
-         zip -9 "$ZIP_FILE" "$ROOTFS_IMAGE"
-         unzip -t "$ZIP_FILE" > /dev/null 2>&1 || { echo "Zip file integrity check failed"; exit 1; }
+         echo "🗜️ Compressing rootfs image..."
+         if ! zip -9 "$ZIP_FILE" "$ROOTFS_IMAGE" >/dev/null 2>&1; then
+           echo "❌ Failed to compress rootfs image"
+           exit 1
+         fi
+         
+         echo "🔍 Verifying compressed image integrity..."
+         if ! unzip -t "$ZIP_FILE" >/dev/null 2>&1; then
+           echo "❌ Zip file integrity check failed"
+           exit 1
+         fi
+         
+         echo "✅ Rootfs image compressed successfully"
+         echo "📊 Original size: $(du -h "$ROOTFS_IMAGE" | cut -f1)"
+         echo "📊 Compressed size: $(du -h "$ZIP_FILE" | cut -f1)"
          
     - name: Build boot image using script
       run: |
+        set -e  # Exit on any error
+        
+        echo "🚀 Building boot image..."
         chmod +x raphael-boot_build.sh
         
         ROOTFS_IMG="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         BOOT_OUTPUT="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
         
-        ./raphael-boot_build.sh \
+        echo "📋 Boot image build parameters:"
+        echo "   - Kernel version: $KERNEL_VERSION"
+        echo "   - Distribution: $DISTRIBUTION"
+        echo "   - Rootfs image: $ROOTFS_IMG"
+        echo "   - Output: $BOOT_OUTPUT"
+        
+        if ! ./raphael-boot_build.sh \
           --kernel-version "$KERNEL_VERSION" \
           --distribution "$DISTRIBUTION" \
           --rootfs-image "$ROOTFS_IMG" \
-          --output "$BOOT_OUTPUT"
+          --output "$BOOT_OUTPUT"; then
+          echo "❌ Boot image build failed"
+          exit 1
+        fi
         
+        # Extract rootfs UUID for documentation
         ROOTFS_UUID=$(./raphael-boot_build.sh --kernel-version "$KERNEL_VERSION" --distribution "$DISTRIBUTION" --rootfs-image "$ROOTFS_IMG" --dry-run 2>&1 | grep "Rootfs UUID:" | tail -1 | awk '{print $NF}' || echo "")
         [ -n "$ROOTFS_UUID" ] && echo "ROOTFS_UUID=$ROOTFS_UUID" >> $GITHUB_ENV
         
+        echo "✅ Boot image built successfully: $BOOT_OUTPUT"
+        
     - name: Verify boot image
       run: |
-        BOOT_IMG="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-        [ -n "$BOOT_IMG" ] || { echo "Boot image not found"; exit 1; }
+        set -e  # Exit on any error
         
+        echo "🔍 Verifying boot image..."
+        BOOT_IMG="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        
+        if [ ! -f "$BOOT_IMG" ]; then
+          echo "❌ Boot image not found: $BOOT_IMG"
+          exit 1
+        fi
+        
+        # Check image size
         IMG_SIZE=$(stat -c%s "$BOOT_IMG")
         MIN_SIZE=$((200 * 1024 * 1024))
         MAX_SIZE=$((500 * 1024 * 1024))
-        [ "$IMG_SIZE" -ge "$MIN_SIZE" ] && [ "$IMG_SIZE" -le "$MAX_SIZE" ] || echo "Boot image size outside expected range"
+        echo "📊 Boot image size: $(du -h "$BOOT_IMG" | cut -f1)"
         
+        if [ "$IMG_SIZE" -lt "$MIN_SIZE" ] || [ "$IMG_SIZE" -gt "$MAX_SIZE" ]; then
+          echo "⚠️ Boot image size outside expected range ($((MIN_SIZE/1024/1024))MB - $((MAX_SIZE/1024/1024))MB)"
+        fi
+        
+        # Mount and verify content
+        echo "🔄 Mounting boot image for content verification..."
         mkdir -p /tmp/boot-mount
-        sudo mount -o loop "$BOOT_IMG" /tmp/boot-mount
+        if ! sudo mount -o loop "$BOOT_IMG" /tmp/boot-mount >/dev/null 2>&1; then
+          echo "❌ Failed to mount boot image"
+          exit 1
+        fi
         
+        # Check essential files
+        echo "🔍 Checking essential boot files..."
         essential_files=("/tmp/boot-mount/EFI/boot/bootaa64.efi" "/tmp/boot-mount/loader/entries/ubuntu.conf" "/tmp/boot-mount/linux.efi" "/tmp/boot-mount/initramfs")
+        all_found=true
+        
         for file in "${essential_files[@]}"; do
-          [ -f "$file" ] || echo "Missing: $file"
+          if [ -f "$file" ]; then
+            echo "✅ Found: $file"
+          else
+            echo "⚠️ Missing: $file"
+            all_found=false
+          fi
         done
         
-        [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ] && grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf || echo "Kernel version in boot entry does not match"
+        # Check kernel version in configuration
+        if [ -f "/tmp/boot-mount/loader/entries/ubuntu.conf" ]; then
+          if grep -q "$KERNEL_VERSION" /tmp/boot-mount/loader/entries/ubuntu.conf; then
+            echo "✅ Kernel version in boot entry matches: $KERNEL_VERSION"
+          else
+            echo "⚠️ Kernel version in boot entry does not match expected: $KERNEL_VERSION"
+            echo "📋 Current boot entry:"
+            cat /tmp/boot-mount/loader/entries/ubuntu.conf
+          fi
+        fi
         
-        sudo umount /tmp/boot-mount
-        rmdir /tmp/boot-mount
+        # Cleanup
+        sudo umount /tmp/boot-mount >/dev/null 2>&1 || echo "⚠️ Failed to unmount boot image"
+        rmdir /tmp/boot-mount >/dev/null 2>&1 || true
+        
+        if [ "$all_found" = true ]; then
+          echo "✅ Boot image verification completed successfully"
+        else
+          echo "⚠️ Boot image verification found some issues - please review the warnings above"
+        fi
         
     - name: Prepare release files
       run: |

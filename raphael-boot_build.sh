@@ -11,6 +11,19 @@ log_info() { log "INFO: $1"; }
 log_success() { log "SUCCESS: $1"; }
 log_error() { log "ERROR: $1"; exit 1; }
 
+# 执行命令并简化日志输出，仅在失败时显示完整日志
+execute_quiet() {
+    local cmd="$1"
+    local description="$2"
+    log_info "$description..."
+    if ! eval "$cmd" >/dev/null 2>&1; then
+        log_error "Failed: $description"
+        log_info "Full command: $cmd"
+        eval "$cmd"  # 再次执行以显示完整错误信息
+        exit 1
+    fi
+}
+
 # Cleanup function
 cleanup() {
     log_info "Cleaning up..."
@@ -110,10 +123,10 @@ main() {
     log_info "  Output file: $OUTPUT_FILE"
     
     # Create temporary directories
-    TEMP_DIR=$(mktemp -d)
+    execute_quiet "TEMP_DIR=$(mktemp -d)" "Creating temporary directory"
     BOOT_MOUNT_DIR="$TEMP_DIR/boot_tmp"
     ROOTFS_MOUNT_DIR="$TEMP_DIR/rootfs_mount"
-    mkdir -p "$BOOT_MOUNT_DIR" "$ROOTFS_MOUNT_DIR"
+    execute_quiet "mkdir -p '$BOOT_MOUNT_DIR' '$ROOTFS_MOUNT_DIR'" "Creating mount directories"
     
     log_success "Temporary directories created"
     
@@ -123,34 +136,28 @@ main() {
     BOOT_SOURCE_URL="https://github.com/cuicanmx/ubuntu-xiaomi-raphael/releases/download/xiaomi-k20pro-boot/xiaomi-k20pro-boot.img"
     BOOT_FILE="$TEMP_DIR/original-boot.img"
     
-    if ! wget -O "$BOOT_FILE" "$BOOT_SOURCE_URL"; then
-        log_error "Failed to download boot image from $BOOT_SOURCE_URL"
-    fi
+    execute_quiet "wget -O '$BOOT_FILE' '$BOOT_SOURCE_URL'" "Downloading original boot image"
     
     BOOT_SIZE=$(stat -c%s "$BOOT_FILE" 2>/dev/null || stat -f%z "$BOOT_FILE" 2>/dev/null)
     if [[ $BOOT_SIZE -eq 0 ]]; then
         log_error "Downloaded boot image is empty (0 bytes)"
     fi
     
-    log_success "Boot image downloaded: $BOOT_FILE (size: $BOOT_SIZE bytes)"
+    log_success "Boot image downloaded (size: $BOOT_SIZE bytes)"
     
     # Step 2: Mount boot image
     log_info "Step 2: Mounting boot image..."
     
-    if ! sudo mount -o loop "$BOOT_FILE" "$BOOT_MOUNT_DIR"; then
-        log_error "Failed to mount boot image"
-    fi
+    execute_quiet "sudo mount -o loop '$BOOT_FILE' '$BOOT_MOUNT_DIR'" "Mounting boot image"
     
     log_success "Boot image mounted successfully"
-    log_info "Boot image contents:"
-    ls -la "$BOOT_MOUNT_DIR/"
+    log_info "Boot image contents (key files only):"
+    ls -la "$BOOT_MOUNT_DIR/" | grep -E "(total|drwx|linux|initramfs|config|dtb)"  # 只显示关键文件
     
     # Step 3: Mount rootfs image
     log_info "Step 3: Mounting rootfs image..."
     
-    if ! sudo mount -o loop "$ROOTFS_IMAGE" "$ROOTFS_MOUNT_DIR"; then
-        log_error "Failed to mount rootfs image"
-    fi
+    execute_quiet "sudo mount -o loop '$ROOTFS_IMAGE' '$ROOTFS_MOUNT_DIR'" "Mounting rootfs image"
     
     log_success "Rootfs image mounted successfully"
     
@@ -158,11 +165,11 @@ main() {
     log_info "Step 4: Copying kernel files..."
     
     # Create necessary directories
-    sudo mkdir -p "$BOOT_MOUNT_DIR/dtbs"
+    execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
     
     # Copy device tree binaries
     if [[ -d "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" ]]; then
-        sudo cp -r "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" "$BOOT_MOUNT_DIR/dtbs/"
+        execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/qcom' '$BOOT_MOUNT_DIR/dtbs/'" "Copying device tree binaries"
         log_success "Device tree binaries copied"
     else
         log "Warning: Device tree binaries not found"
@@ -171,7 +178,7 @@ main() {
     # Copy kernel config
     local config_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "config-*" 2>/dev/null || true)
     if [[ -n "$config_files" ]]; then
-        sudo cp $config_files "$BOOT_MOUNT_DIR/" 2>/dev/null || true
+        execute_quiet "sudo cp $config_files '$BOOT_MOUNT_DIR/' 2>/dev/null || true" "Copying kernel config"
         log_success "Kernel config copied"
     else
         log "Warning: Kernel config not found"
@@ -180,7 +187,7 @@ main() {
     # Copy initrd image
     local initrd_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" 2>/dev/null || true)
     if [[ -n "$initrd_files" ]]; then
-        sudo cp $initrd_files "$BOOT_MOUNT_DIR/initramfs" 2>/dev/null || true
+        execute_quiet "sudo cp $initrd_files '$BOOT_MOUNT_DIR/initramfs' 2>/dev/null || true" "Copying initrd image"
         log_success "Initrd image copied"
     else
         log_error "Initrd image not found - this is required"
@@ -189,7 +196,7 @@ main() {
     # Copy vmlinuz
     local vmlinuz_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" 2>/dev/null || true)
     if [[ -n "$vmlinuz_files" ]]; then
-        sudo cp $vmlinuz_files "$BOOT_MOUNT_DIR/linux.efi" 2>/dev/null || true
+        execute_quiet "sudo cp $vmlinuz_files '$BOOT_MOUNT_DIR/linux.efi' 2>/dev/null || true" "Copying vmlinuz"
         log_success "Vmlinuz copied"
     else
         log_error "Vmlinuz not found - this is required"
@@ -198,18 +205,16 @@ main() {
     # Step 5: Unmount images
     log_info "Step 5: Unmounting images..."
     
-    sudo umount "$ROOTFS_MOUNT_DIR"
+    execute_quiet "sudo umount '$ROOTFS_MOUNT_DIR'" "Unmounting rootfs image"
     log_success "Rootfs image unmounted"
     
-    sudo umount "$BOOT_MOUNT_DIR"
+    execute_quiet "sudo umount '$BOOT_MOUNT_DIR'" "Unmounting boot image"
     log_success "Boot image unmounted"
     
     # Step 6: Save boot image
     log_info "Step 6: Saving boot image..."
     
-    if ! cp "$BOOT_FILE" "$OUTPUT_FILE"; then
-        log_error "Failed to save boot image to $OUTPUT_FILE"
-    fi
+    execute_quiet "cp '$BOOT_FILE' '$OUTPUT_FILE'" "Saving boot image"
     
     OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || stat -f%z "$OUTPUT_FILE" 2>/dev/null)
     log_success "Boot image saved: $OUTPUT_FILE (size: $OUTPUT_SIZE bytes)"
