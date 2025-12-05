@@ -176,11 +176,39 @@ mount_boot_image() {
     
     log_info "Mounting boot image..."
     
-    # Mount boot image
-    sudo mount -o loop "$boot_file" "$MOUNT_DIR" || {
-        log_error "Failed to mount boot image"
-        return 1
-    }
+    # First, try to setup loop device manually
+    local loop_dev=$(sudo losetup --find --show -P "$boot_file" 2>/dev/null)
+    if [[ -n "$loop_dev" ]]; then
+        # Try to mount the first partition
+        if [[ -b "${loop_dev}p1" ]]; then
+            sudo mount "${loop_dev}p1" "$MOUNT_DIR" || {
+                log_warning "Failed to mount partition, trying to format..."
+                sudo mkfs.fat -F32 "${loop_dev}p1"
+                sudo mount "${loop_dev}p1" "$MOUNT_DIR" || {
+                    sudo losetup -d "$loop_dev"
+                    log_error "Failed to mount boot image after formatting"
+                    return 1
+                }
+            }
+        else
+            # No partitions found, try to mount the entire device
+            sudo mount "$loop_dev" "$MOUNT_DIR" || {
+                log_warning "No partitions found, creating new partition..."
+                sudo mkfs.fat -F32 "$loop_dev"
+                sudo mount "$loop_dev" "$MOUNT_DIR" || {
+                    sudo losetup -d "$loop_dev"
+                    log_error "Failed to mount boot image"
+                    return 1
+                }
+            }
+        fi
+    else
+        # Fallback to direct mount
+        sudo mount -o loop "$boot_file" "$MOUNT_DIR" || {
+            log_error "Failed to mount boot image"
+            return 1
+        }
+    fi
     
     log_success "Boot image mounted at: $MOUNT_DIR"
     
