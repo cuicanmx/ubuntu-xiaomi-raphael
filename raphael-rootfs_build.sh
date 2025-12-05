@@ -68,34 +68,22 @@ main() {
     
     execute_quiet "sed -i '/ConditionKernelVersion/d' '$ROOTDIR/lib/systemd/system/pd-mapper.service'" "Modifying pd-mapper service"
     
-    # 检查并复制deb包
-    check_and_copy_deb() {
+    # Mount current directory to rootfs for direct deb package installation
+    execute_quiet "mkdir -p '$ROOTDIR/tmp/build_dir'" "Creating build directory in rootfs"
+    execute_quiet "mount --bind . '$ROOTDIR/tmp/build_dir'" "Mounting build directory to rootfs"
+    
+    # 安装deb包
+    install_deb() {
         local pattern="$1"
         local description="$2"
-        local deb_files=( $(find . -name "$pattern" -type f) )
+        local deb_files=( $(find "$ROOTDIR/tmp/build_dir" -name "$pattern" -type f) )
         if [ ${#deb_files[@]} -eq 0 ]; then
             log_error "No $description package found (pattern: $pattern)"
             exit 1
         fi
-        execute_quiet "cp '${deb_files[0]}' '$ROOTDIR/tmp/'" "Copying $description package"
-        echo "${deb_files[0]}"
-    }
-    
-    LINUX_PKG=$(check_and_copy_deb "linux-xiaomi-raphael_*.deb" "linux kernel")
-    FIRMWARE_PKG=$(check_and_copy_deb "firmware-xiaomi-raphael_*.deb" "firmware")
-    ALSA_PKG=$(check_and_copy_deb "alsa-xiaomi-raphael_*.deb" "ALSA")
-    
-    # 安装deb包
-    install_deb() {
-        local pkg_name="$1"
-        local description="$2"
-        local pkg_path="$(chroot "$ROOTDIR" find /tmp -name "$pkg_name" -type f)"
-        if [ -z "$pkg_path" ]; then
-            log_error "$description package not found in rootfs tmp directory"
-            exit 1
-        fi
+        local deb_file="${deb_files[0]}"
         log_info "Installing $description package..."
-        if ! chroot "$ROOTDIR" dpkg -i "$pkg_path"; then
+        if ! chroot "$ROOTDIR" dpkg -i "/tmp/build_dir/$(basename "$deb_file")"; then
             log_error "Failed to install $description package"
             exit 1
         fi
@@ -108,7 +96,8 @@ main() {
     execute_quiet "chroot '$ROOTDIR' apt install -y alsa-ucm-conf" "Installing ALSA dependencies"
     install_deb "alsa-xiaomi-raphael_*.deb" "ALSA"
     
-    execute_quiet "rm -f '$ROOTDIR/tmp/*-xiaomi-raphael*.deb'" "Removing temporary deb packages"
+    # 卸载构建目录
+    execute_quiet "umount '$ROOTDIR/tmp/build_dir'" "Unmounting build directory"
     
     execute_quiet "chroot '$ROOTDIR' update-initramfs -c -k all" "Updating initramfs"
     

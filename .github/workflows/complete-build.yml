@@ -54,7 +54,7 @@ env:
   KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
   DISTRIBUTION: ${{ github.event.inputs.distribution }}
   KERNEL_SOURCE: ${{ github.event.inputs.kernel_source }}
-  RELEASE_TAG: v${{ github.event.inputs.kernel_version }}
+  RELEASE_TAG: kernel-${{ github.event.inputs.kernel_version }}
   DESKTOP_ENVIRONMENT: ${{ github.event.inputs.desktop_environment }}
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
@@ -93,11 +93,10 @@ jobs:
         
         echo "📥 Downloading kernel packages from GitHub Release: $RELEASE_TAG"
         
-        # Download compressed kernel archive only (silent mode)
+        # Download compressed kernel archive only (tar.gz format)
         echo "🔍 Downloading compressed kernel archive..."
         if ! gh release download $RELEASE_TAG \
           --pattern "kernel-*-raphael.tar.gz" \
-          --pattern "kernel-*-raphael.zip" \
           --repo ${{ github.repository }} >/dev/null 2>&1; then
           echo "❌ Failed to download kernel packages"
           echo "📦 Available files in release:"
@@ -108,14 +107,10 @@ jobs:
         # Extract the compressed archive
         echo "📦 Extracting kernel archive..."
         tar_file=$(find . -name "kernel-*-raphael.tar.gz" -type f | head -1)
-        zip_file=$(find . -name "kernel-*-raphael.zip" -type f | head -1)
         
         if [ -f "$tar_file" ]; then
           tar -xzf "$tar_file" >/dev/null 2>&1
           echo "✅ tar.gz archive extracted successfully"
-        elif [ -f "$zip_file" ]; then
-          unzip -q "$zip_file"
-          echo "✅ zip archive extracted successfully"
         else
           echo "❌ No compressed kernel archive found"
           echo "📦 Available files:"
@@ -255,29 +250,6 @@ jobs:
          sudo kpartx -d "$ROOTFS_IMAGE" >/dev/null 2>&1 || echo "⚠️ Failed to clean up loop device"
          echo "✅ Rootfs validation completed"
 
-    - name: Compress rootfs image
-      run: |
-         set -e  # Exit on any error
-         
-         ROOTFS_IMAGE="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
-         ZIP_FILE="root-${DISTRIBUTION}-${KERNEL_VERSION}.zip"
-         
-         echo "🗜️ Compressing rootfs image..."
-         if ! zip -9 "$ZIP_FILE" "$ROOTFS_IMAGE" >/dev/null 2>&1; then
-           echo "❌ Failed to compress rootfs image"
-           exit 1
-         fi
-         
-         echo "🔍 Verifying compressed image integrity..."
-         if ! unzip -t "$ZIP_FILE" >/dev/null 2>&1; then
-           echo "❌ Zip file integrity check failed"
-           exit 1
-         fi
-         
-         echo "✅ Rootfs image compressed successfully"
-         echo "📊 Original size: $(du -h "$ROOTFS_IMAGE" | cut -f1)"
-         echo "📊 Compressed size: $(du -h "$ZIP_FILE" | cut -f1)"
-         
     - name: Build boot image using script
       run: |
         set -e  # Exit on any error
@@ -374,21 +346,25 @@ jobs:
           echo "⚠️ Boot image verification found some issues - please review the warnings above"
         fi
         
-    - name: Prepare release files
+    - name: Create combined 7z package
       run: |
-        echo "📁 Preparing release-files directory"
-        rm -rf release-files || true
-        mkdir -p release-files
-        # Copy all build artifacts
-        cp -r *.img release-files/ 2>/dev/null || true
-        cp -r *.zip release-files/ 2>/dev/null || true
-        cp -r *.7z release-files/ 2>/dev/null || true
-        cp -r *.deb release-files/ 2>/dev/null || true
-        echo "📋 Release files:"
-        ls -la release-files || true
-        echo "📁 Release files structure:"
-        find release-files -type f | head -20 || true
-
+        set -e  # Exit on any error
+        
+        echo "🗜️ Creating combined 7z package..."
+        
+        ROOTFS_IMG="root-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        BOOT_IMG="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
+        COMBINED_PACKAGE="xiaomi-raphael-${DISTRIBUTION}-${KERNEL_VERSION}.7z"
+        
+        # Create combined 7z package containing both rootfs and boot images
+        if ! 7z a "$COMBINED_PACKAGE" "$ROOTFS_IMG" "$BOOT_IMG" >/dev/null; then
+          echo "❌ Failed to create combined 7z package"
+          exit 1
+        fi
+        
+        echo "✅ Combined 7z package created successfully"
+        echo "📊 Package size: $(du -h "$COMBINED_PACKAGE" | cut -f1)"
+        
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v1
       with:
@@ -412,74 +388,13 @@ jobs:
           - **构建ID**: ${{ github.run_id }}
           - **发布标签**: ${{ env.RELEASE_TAG }}
           
-          ## 🗂️ 文件说明
+          ## 🗂️ 构建产物
           
-          ### 🔧 RootFS 系统镜像
-          - **完整镜像**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          - **压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
-          - **7z压缩版本**: root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
+          ### � 完整构建包
+          - **组合镜像包**: xiaomi-raphael-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
+          - **包含内容**: RootFS 系统镜像 + Boot 启动镜像
           
-          ### 🚀 Boot 启动镜像
-          - **完整启动镜像**: xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          - **包含内容**: 内核、设备树、初始化脚本
-          
-          ## 📋 使用指南
-          
-          ### 🔥 刷机说明
-          ```bash
-          # 解压 RootFS 镜像
-          unzip root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.zip
-          
-          # 刷入设备 (根据您的设置调整)
-          fastboot flash system root-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          
-          # 刷入启动镜像
-          fastboot flash boot xiaomi-k20pro-boot-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.img
-          
-          # 重启设备
-          fastboot reboot
-          ```
-          
-          ### 💡 使用提示
-          - 建议先使用 fastboot boot 命令临时测试启动镜像
-          - 确保设备已解锁 bootloader
-          - 建议在刷机前备份重要数据
-          - 可以使用 7z 压缩版本以节省存储空间
-          
-          ## 🎯 设备兼容性
-          
-          ### ✅ 支持设备
-          - 小米 Raphael (K20 Pro)
-          - 基于 SM8150 平台的设备
-          
-          ### 🔧 硬件要求
-          - ARM64 架构处理器
-          - 至少 2GB 可用存储空间
-          - 已解锁的 bootloader
-          
-          ## 📝 更新日志
-          
-          ### 🔄 版本更新
-          - **内核版本**: ${{ github.event.inputs.kernel_version }}
-          - **发行版本**: ${{ github.event.inputs.distribution }}
-          - **桌面环境**: ${{ github.event.inputs.desktop_environment }}
-          
-          ### ✨ 功能特性
-          - 完整的 Linux 发行版体验
-          - 优化的 ARM64 性能
-          - 针对小米 Raphael 设备的专门优化
-          - 稳定的内核和系统组件
-          
-          ## ❓ 常见问题
-          
-          ### Q: 如何验证镜像完整性？
-          A: 下载后检查文件大小和哈希值，确保文件完整。
-          
-          ### Q: 是否需要特殊工具？
-          A: 需要 fastboot 工具和已解锁的 bootloader。
-          
-          ### Q: 支持哪些桌面环境？
-          A: 当前支持 ${{ github.event.inputs.desktop_environment }} 桌面环境。
-          
-          ---          
+          ---
           *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
+        files:
+          - xiaomi-raphael-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z

@@ -56,7 +56,7 @@ jobs:
       - name: Upload kernel packages to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.event.inputs.kernel_version }}
+          tag_name: kernel-${{ github.event.inputs.kernel_version }}
           name: "🔧 小米 Raphael 内核 ${{ github.event.inputs.kernel_version }} - 专为 ARM64 优化"
           generate_release_notes: true
           draft: false
@@ -80,7 +80,6 @@ jobs:
             
             ### 📦 压缩归档包（推荐使用）
             - **完整压缩包**: kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
-            - **ZIP 格式**: kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
             
             ### 📁 压缩包内容
             压缩包包含以下内核包文件：
@@ -94,9 +93,6 @@ jobs:
             ```bash
             # 解压 tar.gz 格式
             tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
-            
-            # 或解压 ZIP 格式
-            unzip kernel-${{ github.event.inputs.kernel_version }}-raphael.zip
             
             # 安装内核包
             sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
@@ -145,5 +141,3 @@ jobs:
             *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
           files: |
             output/kernel/kernel-*-raphael.tar.gz
-            output/kernel/kernel-*-raphael.zip
-            output/kernel/*.deb

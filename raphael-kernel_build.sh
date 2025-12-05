@@ -294,78 +294,34 @@ create_compressed_archive() {
     local archive_name="kernel-${_kernel_version}-raphael"
     local archive_path="${OUTPUT_DIR}/${archive_name}"
     
-    # Create a temporary directory for packaging
-    local temp_dir=$(mktemp -d)
+    # Create a README file with build information
+    local readme_content="# Kernel ${_kernel_version} for Xiaomi Raphael (K20 Pro)\n\n## Build Information\n- Kernel Version: ${_kernel_version}\n- Architecture: ARM64\n- Target Device: Xiaomi Raphael (K20 Pro)\n- Build Date: $(date)\n- Build Time: $(( $(date +%s) - BUILD_START_TIME )) seconds\n\n## Contents\n- linux-xiaomi-raphael_${_kernel_version}_arm64.deb: Kernel package\n- firmware-xiaomi-raphael_${_kernel_version}_arm64.deb: Firmware package\n- alsa-xiaomi-raphael_${_kernel_version}_arm64.deb: ALSA package\n- Image.gz-${_kernel_version}: Standalone kernel image\n- dtbs/: Device tree binary files\n\n## Installation\n1. Install DEB packages: \`sudo dpkg -i *.deb\`\n2. Update bootloader with kernel image if needed\n3. Reboot to apply changes"
     
-    # Copy all build artifacts to temporary directory
-    log_info "📄 Copying build artifacts to temporary directory..."
-    
-    # Copy DEB packages
-    mkdir -p "${temp_dir}/packages"
-    cp "${OUTPUT_DIR}"/*.deb "${temp_dir}/packages/" 2>/dev/null || log_warning "⚠️ No DEB packages found"
-    
-    # Copy kernel image
-    mkdir -p "${temp_dir}/kernel"
-    if [ -f "${OUTPUT_DIR}/Image.gz-${_kernel_version}" ]; then
-        cp "${OUTPUT_DIR}/Image.gz-${_kernel_version}" "${temp_dir}/kernel/"
-        log_success "✅ Kernel image copied"
-    fi
-    
-    # Copy DTB files
-    if [ -d "${OUTPUT_DIR}/dtbs" ] && [ "$(ls -A ${OUTPUT_DIR}/dtbs/ 2>/dev/null)" ]; then
-        mkdir -p "${temp_dir}/dtbs"
-        cp "${OUTPUT_DIR}/dtbs/"* "${temp_dir}/dtbs/" 2>/dev/null || log_warning "⚠️ No DTB files found"
-    fi
-    
-    # Copy build status file
-    if [ -f "${OUTPUT_DIR}/build-status.txt" ]; then
-        cp "${OUTPUT_DIR}/build-status.txt" "${temp_dir}/"
-    fi
-    
-    # Create README file with build information
-    cat > "${temp_dir}/README.md" << EOF
-# Kernel $KERNEL_VERSION for Xiaomi Raphael (K20 Pro)
-
-## Build Information
-- Kernel Version: $KERNEL_VERSION
-- Architecture: ARM64
-- Target Device: Xiaomi Raphael (K20 Pro)
-- Build Date: $(date)
-- Build Time: $(( $(date +%s) - BUILD_START_TIME )) seconds
-
-## Contents
-- **packages/**: DEB packages for kernel, firmware, and ALSA
-- **kernel/**: Standalone kernel image
-- **dtbs/**: Device tree binary files
-- **build-status.txt**: Detailed build status report
-
-## Installation
-1. Install DEB packages: \`sudo dpkg -i packages/*.deb\`
-2. Update bootloader with kernel image if needed
-3. Reboot to apply changes
-EOF
-    
-    # Create compressed archive (tar.gz for maximum compatibility)
+    # Create compressed archive directly from build directory without copying
     log_info "📦 Creating tar.gz archive..."
-    cd "${temp_dir}"
-    tar -czf "${archive_path}.tar.gz" .
+    cd "${WORKING_DIR}"
     
-    # Also create a zip archive for broader compatibility
-    log_info "📦 Creating zip archive..."
-    zip -r "${archive_path}.zip" . > /dev/null
+    # Create a temporary README file
+    echo "${readme_content}" > "${OUTPUT_DIR}/README.md"
     
-    # Clean up temporary directory
-    cd - > /dev/null
-    rm -rf "${temp_dir}"
+    # Create tar.gz archive with all necessary files
+    tar -czf "${archive_path}.tar.gz" \
+        linux-xiaomi-raphael.deb \
+        firmware-xiaomi-raphael.deb \
+        alsa-xiaomi-raphael.deb \
+        -C "${OUTPUT_DIR}" Image.gz-${_kernel_version} \
+        -C "${OUTPUT_DIR}" dtbs/ \
+        -C "${OUTPUT_DIR}" README.md
+    
+    # Remove temporary README file
+    rm "${OUTPUT_DIR}/README.md"
     
     # Verify archive creation
-    if [ -f "${archive_path}.tar.gz" ] && [ -f "${archive_path}.zip" ]; then
-        log_success "✅ Compressed archives created successfully"
-        log_info "📦 Archive sizes:"
-        log_info "   - ${archive_name}.tar.gz: $(du -h "${archive_path}.tar.gz" | cut -f1)"
-        log_info "   - ${archive_name}.zip: $(du -h "${archive_path}.zip" | cut -f1)"
+    if [ -f "${archive_path}.tar.gz" ]; then
+        log_success "✅ Compressed archive created successfully"
+        log_info "📦 Archive size: $(du -h "${archive_path}.tar.gz" | cut -f1)"
     else
-        log_error "❌ Failed to create compressed archives"
+        log_error "❌ Failed to create compressed archive"
     fi
 }
 
@@ -440,26 +396,19 @@ create_kernel_package() {
         ln -sf "Image.gz-${_kernel_version}" "${OUTPUT_DIR}/Image.gz-${KERNEL_VERSION}" 2>/dev/null || true
     fi
     
-    # Build the kernel package
-    log_info "📦 Building kernel DEB package..."
+    # Build all packages directly
+    log_info "📦 Building DEB packages..."
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
-    
-    # Verify the output directory structure
-    log_info "🔍 Verifying output directory structure:"
-    ls -la "${OUTPUT_DIR}/"
-    ls -la "${OUTPUT_DIR}/dtbs/" 2>/dev/null || echo "DTB directory not found"
-    
-    # Build firmware and ALSA packages
-    log_info "📦 Building firmware and ALSA packages..."
     dpkg-deb --build --root-owner-group firmware-xiaomi-raphael
     dpkg-deb --build --root-owner-group alsa-xiaomi-raphael
     
-    # Copy packages to output directory
-    log_info "📁 Moving packages to output directory..."
-    mkdir -p "${OUTPUT_DIR}"
-    mv linux-xiaomi-raphael.deb "${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}_arm64.deb"
-    mv firmware-xiaomi-raphael.deb "${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}_arm64.deb"
-    mv alsa-xiaomi-raphael.deb "${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    # Verify the output directory structure
+    log_info "� Verifying output directory structure:"
+    ls -la "${OUTPUT_DIR}/"
+    ls -la "${OUTPUT_DIR}/dtbs/" 2>/dev/null || echo "DTB directory not found"
+    
+    # Create output directory if needed
+    mkdir -p "${OUTPUT_DIR}" 2>/dev/null || true
     
     # Clean up the linux directory
     rm -rf linux

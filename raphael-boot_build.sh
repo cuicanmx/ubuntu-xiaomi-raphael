@@ -167,36 +167,40 @@ main() {
     # Create necessary directories
     execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
     
-    # Copy device tree binaries
+    # Copy device tree binaries (exact path check)
     if [[ -d "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" ]]; then
-        execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/qcom' '$BOOT_MOUNT_DIR/dtbs/'" "Copying device tree binaries"
+        execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/qcom' '$BOOT_MOUNT_DIR/dtbs/'" "Copying device tree binaries from /boot/dtbs/qcom"
         log_success "Device tree binaries copied"
     else
-        log "Warning: Device tree binaries not found"
+        # Try alternative paths
+        log "Warning: Device tree binaries not found at expected path - checking alternatives..."
+        if [[ -d "$ROOTFS_MOUNT_DIR/boot/dtbs" ]]; then
+            execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/*' '$BOOT_MOUNT_DIR/dtbs/' 2>/dev/null || true" "Copying all device tree binaries"
+            log_success "All device tree binaries copied"
+        else
+            log "Warning: Device tree binaries not found in any location"
+        fi
     fi
     
-    # Copy kernel config
-    local config_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "config-*" 2>/dev/null || true)
-    if [[ -n "$config_files" ]]; then
-        execute_quiet "sudo cp $config_files '$BOOT_MOUNT_DIR/' 2>/dev/null || true" "Copying kernel config"
+    # Copy kernel config (exact pattern check)
+    if ls "$ROOTFS_MOUNT_DIR/boot/config-*" 1> /dev/null 2>&1; then
+        execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/config-*' '$BOOT_MOUNT_DIR/' 2>/dev/null" "Copying kernel config files"
         log_success "Kernel config copied"
     else
         log "Warning: Kernel config not found"
     fi
     
-    # Copy initrd image
-    local initrd_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "initrd.img-*" 2>/dev/null || true)
-    if [[ -n "$initrd_files" ]]; then
-        execute_quiet "sudo cp $initrd_files '$BOOT_MOUNT_DIR/initramfs' 2>/dev/null || true" "Copying initrd image"
+    # Copy initrd image (exact pattern check)
+    if ls "$ROOTFS_MOUNT_DIR/boot/initrd.img-*" 1> /dev/null 2>&1; then
+        execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/initrd.img-*' '$BOOT_MOUNT_DIR/initramfs' 2>/dev/null" "Copying initrd image"
         log_success "Initrd image copied"
     else
         log_error "Initrd image not found - this is required"
     fi
     
-    # Copy vmlinuz
-    local vmlinuz_files=$(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz-*" 2>/dev/null || true)
-    if [[ -n "$vmlinuz_files" ]]; then
-        execute_quiet "sudo cp $vmlinuz_files '$BOOT_MOUNT_DIR/linux.efi' 2>/dev/null || true" "Copying vmlinuz"
+    # Copy vmlinuz (exact pattern check)
+    if ls "$ROOTFS_MOUNT_DIR/boot/vmlinuz-*" 1> /dev/null 2>&1; then
+        execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/vmlinuz-*' '$BOOT_MOUNT_DIR/linux.efi' 2>/dev/null" "Copying vmlinuz"
         log_success "Vmlinuz copied"
     else
         log_error "Vmlinuz not found - this is required"
