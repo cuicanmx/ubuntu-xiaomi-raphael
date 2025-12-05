@@ -61,6 +61,7 @@ CCACHE_MAXSIZE="5G"                  # ccache最大大小
 # ----------------------------- 
 SUPPORTED_DISTRIBUTIONS=("ubuntu")
 SUPPORTED_UBUNTU_VERSIONS=("24.04.3" "noble")
+DISTRIBUTION_DEFAULT="ubuntu"
 
 # ----------------------------- 
 # 依赖检查函数

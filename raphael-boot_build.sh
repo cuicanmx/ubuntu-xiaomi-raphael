@@ -73,6 +73,12 @@ parse_arguments() {
     DRY_RUN=false
     DEBUG=false
     
+    # Check if no arguments provided
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
     while [[ $# -gt 0 ]]; do
         case $1 in
             -k|--kernel-version)
