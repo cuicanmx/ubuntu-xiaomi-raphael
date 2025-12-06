@@ -396,5 +396,4 @@ jobs:
           
           ---
           *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
-        files:
-          - xiaomi-raphael-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
+        files: xiaomi-raphael-${{ github.event.inputs.distribution }}-${{ github.event.inputs.kernel_version }}.7z
