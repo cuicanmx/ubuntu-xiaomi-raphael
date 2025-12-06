@@ -216,9 +216,11 @@ configure_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     log_info "🔧 正在运行内核配置..."
-    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\" defconfig sm8150.config"
+    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
     
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" defconfig sm8150.config
+    # 设置 CCACHE 环境变量以启用缓存
+    export CROSS_COMPILE="ccache aarch64-linux-gnu-"
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核配置失败"
@@ -248,10 +250,10 @@ build_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     log_info "🔨 开始内核编译..."
-    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\""
+    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
     log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-"
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核构建失败"
@@ -366,7 +368,7 @@ create_kernel_package() {
     
     # Install modules
     log_info "🔧 Installing kernel modules..."
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
     
     # Remove build symlinks
     rm -rf "${DEB_PACKAGE_DIR}/lib/modules/**/build" 2>/dev/null || true

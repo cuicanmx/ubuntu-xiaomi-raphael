@@ -32,7 +32,24 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y crossbuild-essential-arm64 build-essential bison flex libssl-dev bc git device-tree-compiler u-boot-tools dpkg-dev debhelper fakeroot
+          sudo apt-get install -y crossbuild-essential-arm64 build-essential bison flex libssl-dev bc git device-tree-compiler u-boot-tools dpkg-dev debhelper fakeroot ccache
+          
+      - name: Configure ccache
+        run: |
+          echo "::group::Configuring ccache"
+          ccache --version
+          ccache --show-config
+          ccache --max-size 5G
+          echo "::endgroup::"
+          
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-kernel-${{ github.event.inputs.kernel_version }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-kernel-${{ github.event.inputs.kernel_version }}-
+            ${{ runner.os }}-ccache-kernel-
             
       - name: Build kernel packages
         run: |
@@ -141,3 +158,9 @@ jobs:
             *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
           files: |
             output/kernel/kernel-*-raphael.tar.gz
+      
+      - name: Check ccache stats
+        run: |
+          echo "::group::ccache statistics"
+          ccache --show-stats
+          echo "::endgroup::"
