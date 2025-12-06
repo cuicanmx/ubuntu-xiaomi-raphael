@@ -207,11 +207,12 @@ main() {
     
     # Copy kernel config (如果存在)
     log_info "Copying kernel config..."
-    set -- $ROOTFS_MOUNT_DIR/boot/config-*
-    if [ $# -eq 0 ]; then
+    # 使用数组安全处理通配符扩展
+    config_files=($ROOTFS_MOUNT_DIR/boot/config-*)
+    if [ ${#config_files[@]} -eq 0 ]; then
         log_warning "Kernel config not found at expected path: $ROOTFS_MOUNT_DIR/boot/config-*"
     else
-        execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
+        execute_command "sudo cp \"${config_files[0]}\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
         log_success "Kernel config copied"
     fi
     

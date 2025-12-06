@@ -59,7 +59,7 @@ if [ -f "${SCRIPT_DIR}/logging-utils.sh" ]; then
 else
     echo "[ERROR] 日志库文件 logging-utils.sh 未找到"
     exit 1
-}
+fi
 
 # 初始化日志系统
 init_logging
