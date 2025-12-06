@@ -59,7 +59,13 @@ OUTPUT_DIR="${WORKING_DIR}/output"   # 输出目录
 # ----------------------------- 
 CACHE_ENABLED_DEFAULT=true           # 默认启用构建缓存
 CCACHE_DIR="${GITHUB_WORKSPACE:-$HOME}/.ccache"  # ccache目录（如果可用则使用GitHub工作空间）
-CCACHE_MAXSIZE="5G"                  # ccache最大大小
+CCACHE_MAXSIZE="15G"                 # ccache最大大小 (GitHub Actions使用15G)
+CCACHE_COMPRESS="1"                  # 启用压缩以节省空间
+CCACHE_COMPRESSLEVEL="6"             # 压缩级别 (1-9)
+CCACHE_LOGFILE="${WORKING_DIR}/ccache.log"  # ccache日志文件
+CCACHE_UMASK="002"                   # 缓存文件权限
+CCACHE_SLOPPINESS="file_macro,locale,time_macros"  # 放宽匹配条件以提高命中率
+CCACHE_NOHASHDIR="1"                 # 禁用hash目录以提高性能
 
 # ----------------------------- 
 # 支持的发行版
