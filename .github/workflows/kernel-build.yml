@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Kernel version and release tag (e.g., 6.18)'
+        description: 'Kernel version (e.g., 6.18)'
         required: true
         type: string
-        default: 'kernel-6.18'
+        default: '6.18'
       upload_to_release:
         description: 'Upload kernel packages to GitHub Release'
         required: false
