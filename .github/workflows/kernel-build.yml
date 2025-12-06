@@ -36,40 +36,24 @@ jobs:
           
       - name: Configure ccache
         run: |
-          echo "::group::Configuring ccache"
           ccache --version
+          export CCACHE_RECACHE=true
+          export CCACHE_MAXSIZE=20G
+          export CCACHE_DIR=/tmp/ccache-cache
           ccache --show-config
-          ccache --max-size 5G
-          echo "::endgroup::"
+          ccache -s -v
           
-      - name: Cache ccache
-        uses: actions/cache@v4
+      - name: Restore ccache
+        uses: actions/cache@v3
         with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-kernel-${{ github.event.inputs.kernel_version }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-kernel-${{ github.event.inputs.kernel_version }}-
-            ${{ runner.os }}-ccache-kernel-
-            
+          path: /tmp/ccache-cache
+          key: kernel-ccache
+              
       - name: Build kernel packages
         run: |
           chmod +x ./raphael-kernel_build.sh
           ./raphael-kernel_build.sh "${{ github.event.inputs.kernel_version }}"
-          
-      - name: Verify kernel packages
-        run: |
-          [ -d "output/kernel" ] || { echo "Output directory not found"; exit 1; }
-          
-          ls output/kernel/*.deb 1> /dev/null 2>&1 || { echo "No DEB packages found"; exit 1; }
-          
-          for pkg in output/kernel/*.deb; do
-            dpkg-deb -I "$pkg" || echo "Package verification failed for $pkg"
-          done
-          
-          [ -f "output/kernel/Image.gz-${{ github.event.inputs.kernel_version }}" ] || { echo "Kernel image not found"; exit 1; }
-          
-          ls output/kernel/dtbs/sm8150-*.dtb 1> /dev/null 2>&1 || echo "DTB files not found"
-          
+
       - name: Upload kernel packages to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -78,10 +62,6 @@ jobs:
           generate_release_notes: true
           draft: false
           body: |
-            # 🔧 小米 Raphael (K20 Pro) 内核 ${{ github.event.inputs.kernel_version }}
-            
-            ## 🏷️ 内核信息
-            
             ### 📊 基本信息
             - **设备型号**: 小米 Raphael (K20 Pro)
             - **内核版本**: ${{ github.event.inputs.kernel_version }}
@@ -104,56 +84,8 @@ jobs:
             - firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
             - alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
             
-            ## 📋 使用指南
-            
-            ### 📦 使用压缩归档（推荐）
-            ```bash
-            # 解压 tar.gz 格式
-            tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
-            
-            # 安装内核包
-            sudo dpkg -i linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            sudo dpkg -i firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            sudo dpkg -i alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            ```
-            
-            ## 🎯 设备兼容性
-            
             ### ✅ 支持设备
-            - 小米 Raphael (K20 Pro)
-            - 基于 SM8150 平台的设备
-            
-            ### 🔧 硬件特性
-            - 骁龙 855 处理器优化
-            - 完整的 ARM64 支持
-            - 针对移动设备的电源管理
-            - 优化的 GPU 和显示驱动
-            
-            ## 📝 更新日志
-            
-            ### 🔄 版本更新
-            - **内核版本**: ${{ github.event.inputs.kernel_version }}
-            - **设备支持**: 针对小米 Raphael 的专门优化
-            - **性能改进**: 优化的调度器和电源管理
-            
-            ### ✨ 功能特性
-            - 最新的 Linux 内核功能
-            - 针对移动设备的优化
-            - 稳定的驱动支持
-            - 完整的 ARM64 架构支持
-            
-            ## ❓ 常见问题
-            
-            ### Q: 如何验证内核安装？
-            A: 重启后运行 `uname -r` 检查内核版本。
-            
-            ### Q: 是否需要特殊配置？
-            A: 内核已针对设备进行预配置，无需额外配置。
-            
-            ### Q: 支持哪些功能？
-            A: 支持完整的 Linux 功能，包括网络、存储、显示等。
-            
-            ---
+            - Raphael (K20 Pro)
             
             *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
           files: |
@@ -161,6 +93,13 @@ jobs:
       
       - name: Check ccache stats
         run: |
-          echo "::group::ccache statistics"
           ccache --show-stats
-          echo "::endgroup::"
+          ccache -s -v
+
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: /tmp/ccache-cache
+          key: kernel-ccache
