@@ -126,7 +126,7 @@ main() {
     log_info "   - Output: $OUTPUT_FILE"
     
     # Create temporary directories
-    execute_quiet "TEMP_DIR=$(mktemp -d)" "Creating temporary directory"
+    TEMP_DIR=$(mktemp -d)
     BOOT_MOUNT_DIR="$TEMP_DIR/boot_tmp"
     ROOTFS_MOUNT_DIR="$TEMP_DIR/rootfs_mount"
     execute_quiet "mkdir -p '$BOOT_MOUNT_DIR' '$ROOTFS_MOUNT_DIR'" "Creating mount directories"
