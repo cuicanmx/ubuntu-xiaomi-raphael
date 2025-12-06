@@ -197,12 +197,28 @@ configure_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    log_info "🔧 正在运行内核配置..."
-    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\" defconfig sm8150.config"
+    # 设置ccache编译环境
+    if [[ "$CACHE_ENABLED" == "true" ]]; then
+        log_info "🔧 启用ccache编译缓存..."
+        export CC="ccache aarch64-linux-gnu-gcc"
+        export CXX="ccache aarch64-linux-gnu-g++"
+        export CCACHE_DIR="${CCACHE_DIR}"
+        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE}"
+        
+        # 显示ccache统计信息
+        if command -v ccache >/dev/null 2>&1; then
+            ccache -s
+        fi
+    else
+        log_info "🔧 使用标准编译环境..."
+        export CC="aarch64-linux-gnu-gcc"
+        export CXX="aarch64-linux-gnu-g++"
+    fi
     
-    # 设置 CCACHE 环境变量以启用缓存
-    export CROSS_COMPILE="ccache aarch64-linux-gnu-"
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" defconfig sm8150.config
+    log_info "🔧 正在运行内核配置..."
+    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\" defconfig sm8150.config"
+    
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核配置失败"
@@ -232,10 +248,10 @@ build_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     log_info "🔨 开始内核编译..."
-    log_info "📋 构建命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"ccache aarch64-linux-gnu-\""
+    log_info "📋 构建命令: make -j$(nproc) VERBOSE=1 ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\""
     log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
+    make -j$(nproc) VERBOSE=1 ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核构建失败"
@@ -350,7 +366,7 @@ create_kernel_package() {
     
     # Install modules
     log_info "🔧 Installing kernel modules..."
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-" INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
+    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
     
     # Remove build symlinks
     rm -rf "${DEB_PACKAGE_DIR}/lib/modules/**/build" 2>/dev/null || true
