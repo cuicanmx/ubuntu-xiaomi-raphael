@@ -37,16 +37,21 @@ jobs:
       - name: Configure ccache
         run: |
           ccache --version
-          export CCACHE_DIR=/tmp/ccache-cache
-          export CCACHE_MAXSIZE=20G
+          export CCACHE_RECACHE=true
+          export CCACHE_DIR=~/.ccache
+          export CCACHE_MAXSIZE=10G
+          mkdir -p ~/.ccache
           ccache --show-config
           ccache -s -v
           
       - name: Restore ccache
         uses: actions/cache@v3
         with:
-          path: /tmp/ccache-cache
-          key: kernel-ccache
+          path: ~/.ccache
+          key: kernel-${{ github.event.inputs.kernel_version }}-${{ runner.os }}
+          restore-keys: |
+            kernel-${{ github.event.inputs.kernel_version }}-
+            kernel-
               
       - name: Build kernel packages
         run: |
@@ -100,5 +105,5 @@ jobs:
         if: always()
         uses: actions/cache/save@v3
         with:
-          path: /tmp/ccache-cache
-          key: kernel-ccache
+          path: ~/.ccache
+          key: kernel-${{ github.event.inputs.kernel_version }}-${{ runner.os }}
