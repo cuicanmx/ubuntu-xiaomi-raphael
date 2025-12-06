@@ -5,23 +5,23 @@
 
 set -e  # Exit on any error
 
-# Simple logging
-log() { echo "[$(date +'%H:%M:%S')] $1"; }
-log_info() { log "INFO: $1"; }
-log_success() { log "SUCCESS: $1"; }
-log_error() { log "ERROR: $1"; exit 1; }
+# 加载统一日志格式库
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/logging-utils.sh" ]; then
+    source "${SCRIPT_DIR}/logging-utils.sh"
+else
+    echo "[ERROR] 日志库文件 logging-utils.sh 未找到"
+    exit 1
+fi
+
+# 初始化日志系统
+init_logging
 
 # 执行命令并简化日志输出，仅在失败时显示完整日志
 execute_quiet() {
     local cmd="$1"
     local description="$2"
-    log_info "$description..."
-    if ! eval "$cmd" >/dev/null 2>&1; then
-        log_error "Failed: $description"
-        log_info "Full command: $cmd"
-        eval "$cmd"  # 再次执行以显示完整错误信息
-        exit 1
-    fi
+    execute_command "$cmd" "$description" "false"
 }
 
 # Cleanup function
@@ -30,11 +30,11 @@ cleanup() {
     
     # Unmount if mounted
     if mountpoint -q "$BOOT_MOUNT_DIR" 2>/dev/null; then
-        sudo umount "$BOOT_MOUNT_DIR" 2>/dev/null || log "Warning: Failed to unmount $BOOT_MOUNT_DIR"
+        sudo umount "$BOOT_MOUNT_DIR" 2>/dev/null || log_warning "Failed to unmount $BOOT_MOUNT_DIR"
     fi
     
     if mountpoint -q "$ROOTFS_MOUNT_DIR" 2>/dev/null; then
-        sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || log "Warning: Failed to unmount $ROOTFS_MOUNT_DIR"
+        sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || log_warning "Failed to unmount $ROOTFS_MOUNT_DIR"
     fi
     
     # Remove temporary directories
@@ -168,50 +168,24 @@ main() {
     execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
     
     # Copy device tree binaries (简化处理，忽略qcom目录错误)
-    log "Copying device tree files (ignoring qcom directory errors)..."
+    log_info "Copying device tree files (ignoring qcom directory errors)..."
     # 只尝试复制所有dtb文件，忽略错误
     sudo cp -r "$ROOTFS_MOUNT_DIR/boot/dtbs"/* "$BOOT_MOUNT_DIR/dtbs/" 2>/dev/null || true
-    log "Device tree files copied (errors ignored)"
-    
-    # Copy kernel config (exact pattern check)
-    if ls "$ROOTFS_MOUNT_DIR/boot/config-*" 1> /dev/null 2>&1; then
-        execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/config-*' '$BOOT_MOUNT_DIR/' 2>/dev/null" "Copying kernel config files"
-        log_success "Kernel config copied"
-    else
-        log "Warning: Kernel config not found"
-        # 尝试在其他位置查找内核配置
-        CONFIG_FILES=($(find "$ROOTFS_MOUNT_DIR" -name "config-*" 2>/dev/null))
-        if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
-            execute_quiet "sudo cp ${CONFIG_FILES[@]} '$BOOT_MOUNT_DIR/'" "Copying kernel config from alternative location"
-            log_success "Kernel config copied from alternative location"
-        fi
-    fi
+    log_success "Device tree files copied (errors ignored)"
     
     # Copy initrd image (严格按照用户要求的命令)
-    log "Copying initrd image..."
+    log_info "Copying initrd image..."
     if ls "$ROOTFS_MOUNT_DIR/boot/initrd.img-*" 1> /dev/null 2>&1; then
-        sudo cp "$ROOTFS_MOUNT_DIR/boot/initrd.img-*" "$BOOT_MOUNT_DIR/initramfs" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_success "Initrd image copied successfully"
-        else
-            log_error "Failed to copy initrd image"
-            exit 1
-        fi
+        execute_command "sudo cp '$ROOTFS_MOUNT_DIR/boot/initrd.img-*' '$BOOT_MOUNT_DIR/initramfs'" "Copying initrd image" "false"
     else
         log_error "Initrd image not found at expected path: $ROOTFS_MOUNT_DIR/boot/initrd.img-*"
         exit 1
     fi
     
     # Copy vmlinuz (严格按照用户要求的命令)
-    log "Copying kernel image..."
+    log_info "Copying kernel image..."
     if ls "$ROOTFS_MOUNT_DIR/boot/vmlinuz-*" 1> /dev/null 2>&1; then
-        sudo cp "$ROOTFS_MOUNT_DIR/boot/vmlinuz-*" "$BOOT_MOUNT_DIR/linux.efi" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_success "Kernel image copied successfully"
-        else
-            log_error "Failed to copy kernel image"
-            exit 1
-        fi
+        execute_command "sudo cp '$ROOTFS_MOUNT_DIR/boot/vmlinuz-*' '$BOOT_MOUNT_DIR/linux.efi'" "Copying kernel image" "false"
     else
         log_error "Kernel image not found at expected path: $ROOTFS_MOUNT_DIR/boot/vmlinuz-*"
         exit 1

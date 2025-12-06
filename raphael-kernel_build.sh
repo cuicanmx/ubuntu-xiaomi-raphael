@@ -6,41 +6,23 @@
 set -e
 set -o pipefail
 
-# Error handling
-handle_error() {
-    local exit_code=$?
-    local line_number=$1
-    local function_name=$2
-    
-    echo "[ERROR] Error in function '$function_name' at line $line_number (exit code: $exit_code)"
-    cleanup
-    exit $exit_code
-}
-
-trap 'handle_error $LINENO ${FUNCNAME[0]:-main}' ERR
-
 # Load configuration
 [ -f "build-config.sh" ] && source "build-config.sh" || {
     echo "[ERROR] build-config.sh not found!"
     exit 1
 }
 
-# Log functions
-log_info() {
-    echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1"
-}
+# 加载统一日志格式库
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/logging-utils.sh" ]; then
+    source "${SCRIPT_DIR}/logging-utils.sh"
+else
+    echo "[ERROR] 日志库文件 logging-utils.sh 未找到"
+    exit 1
+fi
 
-log_success() {
-    echo "[SUCCESS] $1"
-}
-
-log_error() {
-    echo "[ERROR] $1"
-}
-
-log_warning() {
-    echo "[WARNING] $1"
-}
+# 初始化日志系统
+init_logging
 
 # Cleanup function
 cleanup() {

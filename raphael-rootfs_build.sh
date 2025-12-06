@@ -3,6 +3,14 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/build-config.sh"
 
+# 加载统一日志格式库
+if [ -f "${SCRIPT_DIR}/logging-utils.sh" ]; then
+    source "${SCRIPT_DIR}/logging-utils.sh"
+else
+    echo "[ERROR] 日志库文件 logging-utils.sh 未找到"
+    exit 1
+fi
+
 # 配置参数
 ROOTFS_SIZE="6G"
 DISTRIBUTION="${DISTRIBUTION:-ubuntu}"
@@ -12,61 +20,8 @@ ROOTDIR="rootdir"
 VERSION="noble"
 UBUNTU_VERSION="24.04.3"
 
-# 增强的日志系统
-LOG_COLOR_RESET="\033[0m"
-LOG_COLOR_RED="\033[31m"
-LOG_COLOR_GREEN="\033[32m"
-LOG_COLOR_YELLOW="\033[33m"
-LOG_COLOR_BLUE="\033[34m"
-
-log_timestamp() {
-    echo -n "[$(date '+%Y-%m-%d %H:%M:%S')] "
-}
-
-log_info() {
-    log_timestamp
-    echo -e "${LOG_COLOR_BLUE}[INFO]${LOG_COLOR_RESET} $1"
-}
-
-log_success() {
-    log_timestamp
-    echo -e "${LOG_COLOR_GREEN}[SUCCESS]${LOG_COLOR_RESET} $1"
-}
-
-log_error() {
-    log_timestamp
-    echo -e "${LOG_COLOR_RED}[ERROR]${LOG_COLOR_RESET} $1"
-}
-
-log_warning() {
-    log_timestamp
-    echo -e "${LOG_COLOR_YELLOW}[WARNING]${LOG_COLOR_RESET} $1"
-}
-
-log_debug() {
-    if [ "${DEBUG:-false}" = "true" ]; then
-        log_timestamp
-        echo -e "${LOG_COLOR_BLUE}[DEBUG]${LOG_COLOR_RESET} $1"
-    fi
-}
-
-# 错误处理函数
-handle_error() {
-    local error_code=$?
-    local line_number=$1
-    local command_name=$2
-    
-    log_error "命令失败: $command_name (行号: $line_number, 退出码: $error_code)"
-    log_warning "可能的解决方案:"
-    log_warning "1. 检查磁盘空间是否充足"
-    log_warning "2. 验证网络连接是否正常"
-    log_warning "3. 检查依赖包是否完整安装"
-    log_warning "4. 查看详细错误信息以确定具体问题"
-    
-    exit $error_code
-}
-
-trap 'handle_error $LINENO "${BASH_COMMAND}"' ERR
+# 初始化日志系统
+init_logging
 
 main() {
     log_info "开始构建RootFS系统镜像"
