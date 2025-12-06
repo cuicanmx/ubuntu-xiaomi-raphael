@@ -37,9 +37,8 @@ jobs:
       - name: Configure ccache
         run: |
           ccache --version
-          export CCACHE_RECACHE=true
-          export CCACHE_MAXSIZE=20G
           export CCACHE_DIR=/tmp/ccache-cache
+          export CCACHE_MAXSIZE=20G
           ccache --show-config
           ccache -s -v
           
