@@ -168,15 +168,20 @@ main() {
     execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
     
     # Copy device tree binaries (exact path check)
+    DEVICE_TREE_FOUND=false
     if [[ -d "$ROOTFS_MOUNT_DIR/boot/dtbs/qcom" ]]; then
         execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/qcom' '$BOOT_MOUNT_DIR/dtbs/'" "Copying device tree binaries from /boot/dtbs/qcom"
         log_success "Device tree binaries copied"
+        DEVICE_TREE_FOUND=true
     else
         # Try alternative paths
         log "Warning: Device tree binaries not found at expected path - checking alternatives..."
-        if [[ -d "$ROOTFS_MOUNT_DIR/boot/dtbs" ]]; then
-            execute_quiet "sudo cp -r '$ROOTFS_MOUNT_DIR/boot/dtbs/*' '$BOOT_MOUNT_DIR/dtbs/' 2>/dev/null || true" "Copying all device tree binaries"
-            log_success "All device tree binaries copied"
+        # 检查根文件系统中是否存在任何dtb文件
+        DTB_FILES=($(find "$ROOTFS_MOUNT_DIR" -name "*.dtb" 2>/dev/null))
+        if [ ${#DTB_FILES[@]} -gt 0 ]; then
+            execute_quiet "sudo cp ${DTB_FILES[@]} '$BOOT_MOUNT_DIR/dtbs/'" "Copying all found device tree binaries"
+            log_success "Device tree binaries copied from alternative locations"
+            DEVICE_TREE_FOUND=true
         else
             log "Warning: Device tree binaries not found in any location"
         fi
@@ -188,23 +193,59 @@ main() {
         log_success "Kernel config copied"
     else
         log "Warning: Kernel config not found"
+        # 尝试在其他位置查找内核配置
+        CONFIG_FILES=($(find "$ROOTFS_MOUNT_DIR" -name "config-*" 2>/dev/null))
+        if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
+            execute_quiet "sudo cp ${CONFIG_FILES[@]} '$BOOT_MOUNT_DIR/'" "Copying kernel config from alternative location"
+            log_success "Kernel config copied from alternative location"
+        fi
     fi
     
     # Copy initrd image (exact pattern check)
+    INITRD_FOUND=false
     if ls "$ROOTFS_MOUNT_DIR/boot/initrd.img-*" 1> /dev/null 2>&1; then
         execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/initrd.img-*' '$BOOT_MOUNT_DIR/initramfs' 2>/dev/null" "Copying initrd image"
         log_success "Initrd image copied"
+        INITRD_FOUND=true
     else
-        log_error "Initrd image not found - this is required"
+        # 尝试查找其他名称的Initrd镜像
+        log "Warning: Initrd image not found at expected path - checking alternatives..."
+        INITRD_FILES=($(find "$ROOTFS_MOUNT_DIR/boot" -name "init*" 2>/dev/null | grep -E "(initramfs|initrd)"))
+        if [ ${#INITRD_FILES[@]} -gt 0 ]; then
+            execute_quiet "sudo cp ${INITRD_FILES[0]} '$BOOT_MOUNT_DIR/initramfs'" "Copying initrd image from alternative location"
+            log_success "Initrd image copied from alternative location"
+            INITRD_FOUND=true
+        else
+            log_error "Initrd image not found - this is required"
+        fi
     fi
     
     # Copy vmlinuz (exact pattern check)
+    VMLINUZ_FOUND=false
     if ls "$ROOTFS_MOUNT_DIR/boot/vmlinuz-*" 1> /dev/null 2>&1; then
         execute_quiet "sudo cp '$ROOTFS_MOUNT_DIR/boot/vmlinuz-*' '$BOOT_MOUNT_DIR/linux.efi' 2>/dev/null" "Copying vmlinuz"
         log_success "Vmlinuz copied"
+        VMLINUZ_FOUND=true
     else
-        log_error "Vmlinuz not found - this is required"
+        # 尝试查找其他名称的内核镜像
+        log "Warning: Vmlinuz not found at expected path - checking alternatives..."
+        VMLINUZ_FILES=($(find "$ROOTFS_MOUNT_DIR/boot" -name "vmlinuz*" -o -name "Image*" 2>/dev/null))
+        if [ ${#VMLINUZ_FILES[@]} -gt 0 ]; then
+            execute_quiet "sudo cp ${VMLINUZ_FILES[0]} '$BOOT_MOUNT_DIR/linux.efi'" "Copying kernel image from alternative location"
+            log_success "Kernel image copied from alternative location"
+            VMLINUZ_FOUND=true
+        else
+            log_error "Kernel image not found - this is required"
+        fi
     fi
+    
+    # 检查是否找到了关键文件
+    if [ "$VMLINUZ_FOUND" = false ] || [ "$INITRD_FOUND" = false ]; then
+        log_error "Failed to find essential kernel files"
+    fi
+    
+    log_info "Displaying boot directory contents for verification:"
+    ls -la "$ROOTFS_MOUNT_DIR/boot/"
     
     # Step 5: Unmount images
     log_info "Step 5: Unmounting images..."

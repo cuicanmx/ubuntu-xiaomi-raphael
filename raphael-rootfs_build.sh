@@ -99,7 +99,13 @@ main() {
     # 卸载构建目录
     execute_quiet "umount '$ROOTDIR/tmp/build_dir'" "Unmounting build directory"
     
-    execute_quiet "chroot '$ROOTDIR' update-initramfs -c -k all" "Updating initramfs"
+    # 生成initramfs，显示详细信息以便调试
+    log_info "Updating initramfs..."
+    if ! chroot '$ROOTDIR' update-initramfs -c -k all; then
+        log_error "Failed to update initramfs"
+        exit 1
+    fi
+    log_success "Initramfs updated successfully"
     
     execute_quiet "chroot '$ROOTDIR' apt install -y grub-efi-arm64" "Installing GRUB"
     
@@ -115,11 +121,11 @@ main() {
     
     # 跳过二进制格式注册清理
     
-    # 检查boot目录内容 - 仅在GitHub Actions中显示关键信息
+    # 检查boot目录内容 - 显示完整内容以便调试
     log_info "Checking boot directory content..."
     if [ -d "$ROOTDIR/boot" ]; then
-        echo "Boot directory content:"
-        ls -la "$ROOTDIR/boot" | grep -E "(total|drwx|vmlinuz|initrd|config)"  # 只显示关键文件
+        echo "Boot directory content:" 
+        ls -la "$ROOTDIR/boot"
     fi
     
     # 列出安装的包 - 仅在GitHub Actions中显示关键包
