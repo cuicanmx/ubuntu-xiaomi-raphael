@@ -212,7 +212,20 @@ main() {
     if [ ${#config_files[@]} -eq 0 ]; then
         log_warning "Kernel config not found at expected path: $ROOTFS_MOUNT_DIR/boot/config-*"
     else
-        execute_command "sudo cp \"${config_files[0]}\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
+        config_file="${config_files[0]}"
+        log_info "Found kernel config: $config_file"
+        log_info "Target directory: $BOOT_MOUNT_DIR/"
+        # 检查源文件是否存在且可读
+        if [ ! -f "$config_file" ]; then
+            log_error "Kernel config file does not exist: $config_file"
+            exit 1
+        fi
+        # 检查目标目录是否存在且可写
+        if [ ! -d "$BOOT_MOUNT_DIR" ]; then
+            log_error "Target directory does not exist: $BOOT_MOUNT_DIR"
+            exit 1
+        fi
+        execute_command "sudo cp \"$config_file\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
         log_success "Kernel config copied"
     fi
     
