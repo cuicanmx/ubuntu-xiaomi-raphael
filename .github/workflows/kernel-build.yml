@@ -7,7 +7,7 @@ on:
         description: 'Kernel version and release tag (e.g., 6.18)'
         required: true
         type: string
-        default: '6.18'
+        default: 'kernel-6.18'
       upload_to_release:
         description: 'Upload kernel packages to GitHub Release'
         required: false
