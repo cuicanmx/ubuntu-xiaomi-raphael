@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Boot image creation script for Xiaomi K20 Pro (Raphael)
-# Simplified version based on working example
-
 set -e  # Exit on any error
 
 # 加载统一日志格式库
@@ -205,28 +202,30 @@ main() {
     fi
     execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/linux.efi" "Copying kernel image" "false"
     
-    # Copy kernel config (如果存在)
+    # Copy kernel config (如果存在) - 可选步骤，失败不影响构建
     log_info "Copying kernel config..."
     # 使用数组安全处理通配符扩展
     config_files=($ROOTFS_MOUNT_DIR/boot/config-*)
     if [ ${#config_files[@]} -eq 0 ]; then
         log_warning "Kernel config not found at expected path: $ROOTFS_MOUNT_DIR/boot/config-*"
+        log_info "Skipping kernel config copy (optional step)"
     else
         config_file="${config_files[0]}"
         log_info "Found kernel config: $config_file"
         log_info "Target directory: $BOOT_MOUNT_DIR/"
         # 检查源文件是否存在且可读
         if [ ! -f "$config_file" ]; then
-            log_error "Kernel config file does not exist: $config_file"
-            exit 1
-        fi
+            log_warning "Kernel config file does not exist: $config_file, skipping"
         # 检查目标目录是否存在且可写
-        if [ ! -d "$BOOT_MOUNT_DIR" ]; then
-            log_error "Target directory does not exist: $BOOT_MOUNT_DIR"
-            exit 1
+        elif [ ! -d "$BOOT_MOUNT_DIR" ]; then
+            log_warning "Target directory does not exist: $BOOT_MOUNT_DIR, skipping"
+        else
+            # 尝试复制，但即使失败也不退出
+            execute_command "sudo cp \"$config_file\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false" || {
+                log_warning "Failed to copy kernel config, but continuing (optional step)"
+            }
+            log_success "Kernel config copied (or skipped)"
         fi
-        execute_command "sudo cp \"$config_file\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
-        log_success "Kernel config copied"
     fi
     
     log_info "Displaying boot directory contents for verification:"
@@ -258,6 +257,7 @@ main() {
     
     log_success "✅ Boot image creation completed successfully!"
     log_info "📁 Output file: $OUTPUT_FILE"
+    return 0
 }
 
 # Run main function
