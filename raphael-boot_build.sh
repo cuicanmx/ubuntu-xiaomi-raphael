@@ -26,23 +26,25 @@ execute_quiet() {
 
 # Cleanup function
 cleanup() {
+    local exit_code=$?
     log_info "Cleaning up..."
     
-    # Unmount if mounted
+    # Unmount if mounted (silently ignore errors)
     if mountpoint -q "$BOOT_MOUNT_DIR" 2>/dev/null; then
-        sudo umount "$BOOT_MOUNT_DIR" 2>/dev/null || log_warning "Failed to unmount $BOOT_MOUNT_DIR"
+        sudo umount "$BOOT_MOUNT_DIR" 2>/dev/null || true
     fi
     
     if mountpoint -q "$ROOTFS_MOUNT_DIR" 2>/dev/null; then
-        sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || log_warning "Failed to unmount $ROOTFS_MOUNT_DIR"
+        sudo umount "$ROOTFS_MOUNT_DIR" 2>/dev/null || true
     fi
     
-    # Remove temporary directories
-    [[ -d "$BOOT_MOUNT_DIR" ]] && rm -rf "$BOOT_MOUNT_DIR" 2>/dev/null || true
-    [[ -d "$ROOTFS_MOUNT_DIR" ]] && rm -rf "$ROOTFS_MOUNT_DIR" 2>/dev/null || true
-    [[ -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR" 2>/dev/null || true
+    # Remove temporary directories (silently ignore errors)
+    rm -rf "$BOOT_MOUNT_DIR" 2>/dev/null || true
+    rm -rf "$ROOTFS_MOUNT_DIR" 2>/dev/null || true
+    rm -rf "$TEMP_DIR" 2>/dev/null || true
     
     log_success "Cleanup completed"
+    return $exit_code
 }
 
 trap cleanup EXIT
