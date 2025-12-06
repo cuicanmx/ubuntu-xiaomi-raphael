@@ -21,7 +21,10 @@ init_logging
 execute_quiet() {
     local cmd="$1"
     local description="$2"
-    execute_command "$cmd" "$description" "false"
+    execute_command "$cmd" "$description" "false" || {
+        log_error "命令执行失败: $description"
+        return 1
+    }
 }
 
 # Cleanup function
@@ -70,7 +73,7 @@ EOF
 
 # Main function
 main() {
-    log_info "Starting boot image creation process..."
+    log_title "🚀 Building boot image..."
     
     # Parse arguments
     KERNEL_VERSION=""
@@ -116,11 +119,11 @@ main() {
     # Set default output file
     [[ -z "$OUTPUT_FILE" ]] && OUTPUT_FILE="xiaomi-k20pro-boot-${DISTRIBUTION}-${KERNEL_VERSION}.img"
     
-    log_info "Parameters:"
-    log_info "  Kernel version: $KERNEL_VERSION"
-    log_info "  Distribution: $DISTRIBUTION"
-    log_info "  Rootfs image: $ROOTFS_IMAGE"
-    log_info "  Output file: $OUTPUT_FILE"
+    log_title "📋 Boot image build parameters:"
+    log_info "   - Kernel version: $KERNEL_VERSION"
+    log_info "   - Distribution: $DISTRIBUTION"
+    log_info "   - Rootfs image: $ROOTFS_IMAGE"
+    log_info "   - Output: $OUTPUT_FILE"
     
     # Create temporary directories
     execute_quiet "TEMP_DIR=$(mktemp -d)" "Creating temporary directory"
@@ -131,7 +134,7 @@ main() {
     log_success "Temporary directories created"
     
     # Step 1: Download boot image
-    log_info "Step 1: Downloading boot image..."
+    log_step_start "📥 Downloading boot image"
     
     BOOT_SOURCE_URL="https://github.com/cuicanmx/ubuntu-xiaomi-raphael/releases/download/xiaomi-k20pro-boot/xiaomi-k20pro-boot.img"
     BOOT_FILE="$TEMP_DIR/original-boot.img"
@@ -143,26 +146,26 @@ main() {
         log_error "Downloaded boot image is empty (0 bytes)"
     fi
     
-    log_success "Boot image downloaded (size: $BOOT_SIZE bytes)"
+    log_step_complete "Boot image downloaded (size: $BOOT_SIZE bytes)"
     
     # Step 2: Mount boot image
-    log_info "Step 2: Mounting boot image..."
+    log_step_start "🔗 Mounting boot image"
     
     execute_quiet "sudo mount -o loop '$BOOT_FILE' '$BOOT_MOUNT_DIR'" "Mounting boot image"
     
-    log_success "Boot image mounted successfully"
+    log_step_complete "Boot image mounted successfully"
     log_info "Boot image contents (key files only):"
     ls -la "$BOOT_MOUNT_DIR/" | grep -E "(total|drwx|linux|initramfs|config|dtb)"  # 只显示关键文件
     
     # Step 3: Mount rootfs image
-    log_info "Step 3: Mounting rootfs image..."
+    log_step_start "🔗 Mounting rootfs image"
     
     execute_quiet "sudo mount -o loop '$ROOTFS_IMAGE' '$ROOTFS_MOUNT_DIR'" "Mounting rootfs image"
     
-    log_success "Rootfs image mounted successfully"
+    log_step_complete "Rootfs image mounted successfully"
     
     # Step 4: Copy kernel files
-    log_info "Step 4: Copying kernel files..."
+    log_step_start "📂 Copying kernel files"
     
     # Create necessary directories
     execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
@@ -194,8 +197,10 @@ main() {
     log_info "Displaying boot directory contents for verification:"
     ls -la "$ROOTFS_MOUNT_DIR/boot/"
     
+    log_step_complete "Kernel files copied successfully"
+    
     # Step 5: Unmount images
-    log_info "Step 5: Unmounting images..."
+    log_step_start "🔓 Unmounting images"
     
     execute_quiet "sudo umount '$ROOTFS_MOUNT_DIR'" "Unmounting rootfs image"
     log_success "Rootfs image unmounted"
@@ -203,19 +208,21 @@ main() {
     execute_quiet "sudo umount '$BOOT_MOUNT_DIR'" "Unmounting boot image"
     log_success "Boot image unmounted"
     
+    log_step_complete "Images unmounted successfully"
+    
     # Step 6: Save boot image
-    log_info "Step 6: Saving boot image..."
+    log_step_start "💾 Saving boot image"
     
     execute_quiet "cp '$BOOT_FILE' '$OUTPUT_FILE'" "Saving boot image"
     
     OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || stat -f%z "$OUTPUT_FILE" 2>/dev/null)
-    log_success "Boot image saved: $OUTPUT_FILE (size: $OUTPUT_SIZE bytes)"
+    log_step_complete "Boot image saved: $OUTPUT_FILE (size: $OUTPUT_SIZE bytes)"
     
     # Step 7: Cleanup
     cleanup
     
-    log_success "Boot image creation completed successfully!"
-    log_info "Output file: $OUTPUT_FILE"
+    log_success "✅ Boot image creation completed successfully!"
+    log_info "📁 Output file: $OUTPUT_FILE"
 }
 
 # Run main function
