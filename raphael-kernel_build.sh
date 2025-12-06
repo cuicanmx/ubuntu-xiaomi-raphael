@@ -305,13 +305,14 @@ create_compressed_archive() {
     echo "${readme_content}" > "${OUTPUT_DIR}/README.md"
     
     # Create tar.gz archive with all necessary files
-    tar -czf "${archive_path}.tar.gz" \
-        linux-xiaomi-raphael.deb \
-        firmware-xiaomi-raphael.deb \
-        alsa-xiaomi-raphael.deb \
+    # Use --ignore-failed-read to handle empty dtbs directory
+    tar -czf "${archive_path}.tar.gz" --ignore-failed-read \
+        -C "${OUTPUT_DIR}" linux-xiaomi-raphael_${_kernel_version}_arm64.deb \
+        -C "${OUTPUT_DIR}" firmware-xiaomi-raphael_${_kernel_version}_arm64.deb \
+        -C "${OUTPUT_DIR}" alsa-xiaomi-raphael_${_kernel_version}_arm64.deb \
         -C "${OUTPUT_DIR}" Image.gz-${_kernel_version} \
         -C "${OUTPUT_DIR}" dtbs/ \
-        -C "${OUTPUT_DIR}" README.md
+        -C "${OUTPUT_DIR}" README.md || { log_error "❌ Failed to create archive"; exit 1; }
     
     # Remove temporary README file
     rm "${OUTPUT_DIR}/README.md"
@@ -401,6 +402,12 @@ create_kernel_package() {
     dpkg-deb --build --root-owner-group linux-xiaomi-raphael
     dpkg-deb --build --root-owner-group firmware-xiaomi-raphael
     dpkg-deb --build --root-owner-group alsa-xiaomi-raphael
+    
+    # Move built packages to output directory with proper naming
+    log_info "📁 Moving packages to output directory..."
+    mv -f linux-xiaomi-raphael.deb "${OUTPUT_DIR}/linux-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    mv -f firmware-xiaomi-raphael.deb "${OUTPUT_DIR}/firmware-xiaomi-raphael_${_kernel_version}_arm64.deb"
+    mv -f alsa-xiaomi-raphael.deb "${OUTPUT_DIR}/alsa-xiaomi-raphael_${_kernel_version}_arm64.deb"
     
     # Verify the output directory structure
     log_info "� Verifying output directory structure:"
