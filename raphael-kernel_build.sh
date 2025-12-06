@@ -138,8 +138,8 @@ install_dependencies() {
 check_dependencies() {
     log_info "🔍 正在检查构建依赖项..."
     
-    # 检查必需的交叉编译工具
-    local required_tools=("aarch64-linux-gnu-gcc" "aarch64-linux-gnu-g++" "make" "git")
+    # 检查必需的原生编译工具
+    local required_tools=("gcc" "g++" "make" "git" "ld" "ar")
     local missing_tools=()
     
     for tool in "${required_tools[@]}"; do
@@ -150,6 +150,13 @@ check_dependencies() {
     
     if [ ${#missing_tools[@]} -eq 0 ]; then
         log_success "所有必需的依赖项都可用"
+        
+        # 显示编译器版本信息
+        log_info "🔧 编译器信息:"
+        log_info "   - GCC版本: $(gcc --version | head -n1)"
+        log_info "   - G++版本: $(g++ --version | head -n1)"
+        log_info "   - 架构: $(uname -m)"
+        
         return 0
     else
         log_warning "缺少依赖项: ${missing_tools[*]}"
@@ -197,11 +204,13 @@ configure_kernel() {
     
     cd "${KERNEL_BUILD_DIR}"
     
-    # 设置ccache编译环境
+    # 设置ARM64原生编译环境
     if [[ "$CACHE_ENABLED" == "true" ]]; then
-        log_info "🔧 启用ccache编译缓存..."
-        export CC="ccache aarch64-linux-gnu-gcc"
-        export CXX="ccache aarch64-linux-gnu-g++"
+        log_info "🔧 启用ARM64原生ccache编译缓存..."
+        export CC="ccache gcc"
+        export CXX="ccache g++"
+        export LD="ld"
+        export AR="ar"
         export CCACHE_DIR="${CCACHE_DIR}"
         export CCACHE_MAXSIZE="${CCACHE_MAXSIZE}"
         
@@ -210,15 +219,17 @@ configure_kernel() {
             ccache -s
         fi
     else
-        log_info "🔧 使用标准编译环境..."
-        export CC="aarch64-linux-gnu-gcc"
-        export CXX="aarch64-linux-gnu-g++"
+        log_info "🔧 使用ARM64原生编译环境..."
+        export CC="gcc"
+        export CXX="g++"
+        export LD="ld"
+        export AR="ar"
     fi
     
     log_info "🔧 正在运行内核配置..."
-    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\" defconfig sm8150.config"
+    log_info "📋 配置命令: make -j$(nproc) ARCH=arm64 defconfig sm8150.config"
     
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" defconfig sm8150.config
+    make -j$(nproc) ARCH=arm64 defconfig sm8150.config
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核配置失败"
@@ -248,10 +259,10 @@ build_kernel() {
     cd "${KERNEL_BUILD_DIR}"
     
     log_info "🔨 开始内核编译..."
-    log_info "📋 构建命令: make -j$(nproc) VERBOSE=1 ARCH=arm64 CROSS_COMPILE=\"aarch64-linux-gnu-\""
+    log_info "📋 构建命令: make -j$(nproc) VERBOSE=1 ARCH=arm64"
     log_info "🖥️ 使用 $(nproc) 个CPU核心进行编译"
     
-    make -j$(nproc) VERBOSE=1 ARCH=arm64 CROSS_COMPILE="ccache aarch64-linux-gnu-"
+    make -j$(nproc) VERBOSE=1 ARCH=arm64
     
     if [ $? -ne 0 ]; then
         log_error "❌ 内核构建失败"
@@ -366,7 +377,7 @@ create_kernel_package() {
     
     # Install modules
     log_info "🔧 Installing kernel modules..."
-    make -j$(nproc) ARCH=arm64 CROSS_COMPILE="aarch64-linux-gnu-" INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
+    make -j$(nproc) ARCH=arm64 INSTALL_MOD_PATH="${DEB_PACKAGE_DIR}" modules_install
     
     # Remove build symlinks
     rm -rf "${DEB_PACKAGE_DIR}/lib/modules/**/build" 2>/dev/null || true

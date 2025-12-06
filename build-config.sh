@@ -20,8 +20,13 @@ BUILD_THREADS=$(nproc)         # 构建线程数（自动检测）
 KERNEL_REPO="https://github.com/GengWei1997/linux.git"       # 内核源码仓库
 KERNEL_BRANCH_PREFIX="raphael-"                             # 内核仓库中的分支前缀
 KERNEL_VERSION_DEFAULT="6.18"                               # 默认内核版本
-CROSS_COMPILE="aarch64-linux-gnu-"                          # 交叉编译器前缀
 KERNEL_CONFIG="sm8150.config"                                # 内核配置文件
+
+# ARM64原生编译配置（不再需要交叉编译）
+NATIVE_CC="gcc"                                              # 原生C编译器
+NATIVE_CXX="g++"                                            # 原生C++编译器
+NATIVE_LD="ld"                                              # 原生链接器
+NATIVE_AR="ar"                                              # 原生归档器
 
 # ----------------------------- 
 # 启动镜像配置

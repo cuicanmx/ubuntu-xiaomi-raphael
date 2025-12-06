@@ -29,21 +29,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
+      - name: Setup build environment
+        run: |
+          echo "🔧 设置构建环境..."
+          # 创建必要的目录
+          mkdir -p ~/.ccache output/kernel
+          
       - name: Install build dependencies
         run: |
+          echo "📦 安装构建依赖项..."
           sudo apt-get update
-          sudo apt-get install -y crossbuild-essential-arm64 build-essential bison flex libssl-dev bc git device-tree-compiler u-boot-tools dpkg-dev debhelper fakeroot ccache
+          sudo apt-get install -y build-essential bison flex libssl-dev bc git device-tree-compiler dpkg-dev debhelper fakeroot ccache libncurses-dev libelf-dev
           
+          echo "✅ 依赖项安装完成"
+            
       - name: Configure ccache
         run: |
+          echo "🔧 配置ccache编译缓存..."
           ccache --version
+          
+          # 设置ccache环境变量
           export CCACHE_DIR=~/.ccache
-          export CCACHE_MAXSIZE=10G
+          export CCACHE_MAXSIZE=15G
+          export CCACHE_COMPRESS=1
+          export CCACHE_COMPRESSLEVEL=6
+          
           mkdir -p ~/.ccache
-          ccache --show-config
+          
+          echo "📊 初始ccache统计:"
           ccache -s -v
           
-      - name: Restore ccache
+      - name: Restore ccache cache
         uses: actions/cache@v3
         with:
           path: ~/.ccache
@@ -54,32 +70,85 @@ jobs:
               
       - name: Build kernel packages
         run: |
+          echo "🚀 开始内核构建..."
           chmod +x ./raphael-kernel_build.sh
-          ccache -s -v
-          export CC="ccache gcc"
-          export CXX="ccache g++"
-          gcc -v
-          which gcc
-          ./raphael-kernel_build.sh "${{ github.event.inputs.kernel_version }}"
-
+          
+          echo "🔧 系统信息:"
+          uname -a
+          echo "🔧 编译器信息:"
+          gcc --version | head -n1
+          g++ --version | head -n1
+          echo "🔧 内存信息:"
+          free -h
+          echo "🔧 磁盘空间:"
+          df -h
+          
+          echo "📊 构建前ccache统计:"
+          ccache -s
+          
+          # 设置超时和错误处理
+          set -e
+          set -o pipefail
+          
+          # 使用脚本的缓存控制功能
+          echo "🔧 执行内核构建脚本..."
+          if ! ./raphael-kernel_build.sh "${{ github.event.inputs.kernel_version }}" --cache; then
+              echo "❌ 内核构建失败！"
+              echo "📋 调试信息:"
+              echo "- 内核版本: ${{ github.event.inputs.kernel_version }}"
+              echo "- 工作目录: $(pwd)"
+              echo "- 输出目录: output/kernel"
+              ls -la output/kernel/ 2>/dev/null || echo "输出目录不存在"
+              exit 1
+          fi
+          
+          echo "✅ 内核构建成功完成！"
+          echo "📁 构建输出文件:"
+          ls -la output/kernel/
+          
+      - name: Verify build artifacts
+        run: |
+          echo "🔍 验证构建产物..."
+          if [ ! -d "output/kernel" ]; then
+              echo "❌ 输出目录不存在"
+              exit 1
+          fi
+          
+          echo "📁 构建产物列表:"
+          ls -la output/kernel/
+          
+          # 检查压缩包是否存在
+          if ls output/kernel/kernel-*-raphael.tar.gz 1> /dev/null 2>&1; then
+              echo "✅ 内核压缩包存在"
+              tar -tzf output/kernel/kernel-*-raphael.tar.gz | head -10
+          else
+              echo "❌ 内核压缩包不存在"
+              exit 1
+          fi
+          
+          echo "✅ 构建产物验证通过"
+          
       - name: Upload kernel packages to GitHub Release
+        if: github.event.inputs.upload_to_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: kernel-${{ github.event.inputs.kernel_version }}
-          name: "🔧 小米 Raphael 内核 ${{ github.event.inputs.kernel_version }} - 专为 ARM64 优化"
+          name: "🔧 小米 Raphael 内核 ${{ github.event.inputs.kernel_version }} - ARM64原生优化"
           generate_release_notes: true
           draft: false
           body: |
             ### 📊 基本信息
             - **设备型号**: 小米 Raphael (K20 Pro)
             - **内核版本**: ${{ github.event.inputs.kernel_version }}
-            - **架构平台**: ARM64
+            - **架构平台**: ARM64 (原生编译)
             - **目标平台**: SM8150 (骁龙 855)
+            - **构建日期**: ${{ github.event.repository.created_at }}
             
             ### 🔧 构建详情
-            - **构建日期**: ${{ github.event.repository.created_at }}
             - **构建ID**: ${{ github.run_id }}
-            - **发布标签**: v${{ github.event.inputs.kernel_version }}
+            - **编译环境**: ARM64原生 (Ubuntu 24.04 ARM)
+            - **缓存状态**: ccache启用 (15GB)
+            - **构建工具链**: GCC $(gcc --version | head -n1 | cut -d' ' -f3-)
             
             ## 🗂️ 文件说明
             
@@ -88,26 +157,66 @@ jobs:
             
             ### 📁 压缩包内容
             压缩包包含以下内核包文件：
-            - linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            - firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
-            - alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb
+            - **linux-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb** - 主内核包
+            - **firmware-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb** - 固件包
+            - **alsa-xiaomi-raphael_${{ github.event.inputs.kernel_version }}_arm64.deb** - 音频驱动包
+            
+            ### 🚀 安装说明
+            ```bash
+            # 解压并安装
+            tar -xzf kernel-${{ github.event.inputs.kernel_version }}-raphael.tar.gz
+            sudo dpkg -i *.deb
+            ```
             
             ### ✅ 支持设备
-            - Raphael (K20 Pro)
+            - Xiaomi Raphael (K20 Pro)
             
-            *💫 由 GitHub Actions 自动构建，专为小米 Raphael 设备优化*
+            ### 🔧 构建优化特性
+            - ✅ ARM64原生编译 (无需交叉编译)
+            - ✅ ccache缓存优化 (15GB)
+            - ✅ 压缩缓存 (节省存储空间)
+            - ✅ 详细的调试信息
+            
+            *💫 由 GitHub Actions ARM64原生环境自动构建，专为小米 Raphael 设备优化*
           files: |
             output/kernel/kernel-*-raphael.tar.gz
       
-      - name: Check ccache stats
+      - name: Final ccache statistics
         run: |
+          echo "📊 最终ccache统计:"
+          ccache -s
+          echo ""
+          echo "📈 缓存命中率分析:"
           ccache --show-stats
-          ccache -s -v
 
-
-      - name: Save ccache
+      - name: Save ccache cache
         if: always()
         uses: actions/cache/save@v3
         with:
           path: ~/.ccache
           key: kernel-${{ github.event.inputs.kernel_version }}-${{ runner.os }}
+          
+      - name: Build performance summary
+        if: always()
+        run: |
+          echo "📊 构建性能统计:"
+          echo "- 工作流: ${{ github.workflow }}"
+          echo "- 运行ID: ${{ github.run_id }}"
+          echo "- 开始时间: ${{ github.event.repository.created_at }}"
+          echo "- 内核版本: ${{ github.event.inputs.kernel_version }}"
+          echo "- 运行环境: ARM64原生 (Ubuntu 24.04 ARM)"
+          echo ""
+          echo "🔧 系统资源使用:"
+          echo "- 内存使用:"
+          free -h
+          echo "- 磁盘空间:"
+          df -h | grep -E "(Filesystem|/dev/)"
+          echo ""
+          echo "📈 构建优化特性:"
+          echo "- ✅ ARM64原生编译 (无需交叉编译)"
+          echo "- ✅ ccache缓存启用 (15GB)"
+          echo "- ✅ 压缩缓存 (节省存储空间)"
+          echo "- ✅ 详细的调试信息"
+          echo "- ✅ 构建失败自动清理"
+          echo ""
+          echo "💫 构建完成！"
