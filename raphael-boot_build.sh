@@ -170,28 +170,49 @@ main() {
     # Create necessary directories
     execute_quiet "sudo mkdir -p '$BOOT_MOUNT_DIR/dtbs'" "Creating dtbs directory"
     
-    # Copy device tree binaries (简化处理，忽略qcom目录错误)
-    log_info "Copying device tree files (ignoring qcom directory errors)..."
-    # 只尝试复制所有dtb文件，忽略错误
-    sudo cp -r "$ROOTFS_MOUNT_DIR/boot/dtbs"/* "$BOOT_MOUNT_DIR/dtbs/" 2>/dev/null || true
-    log_success "Device tree files copied (errors ignored)"
-    
-    # Copy initrd image (严格按照用户要求的命令)
-    log_info "Copying initrd image..."
-    if ls "$ROOTFS_MOUNT_DIR/boot/initrd.img-*" 1> /dev/null 2>&1; then
-        execute_command "sudo cp '$ROOTFS_MOUNT_DIR/boot/initrd.img-*' '$BOOT_MOUNT_DIR/initramfs'" "Copying initrd image" "false"
+    # Copy device tree binaries (使用稳健的通配符处理)
+    log_info "Copying device tree files..."
+    set -- $ROOTFS_MOUNT_DIR/boot/dtb-*
+    if [ $# -eq 0 ]; then
+        # 检查dtbs目录
+        if [ -d "$ROOTFS_MOUNT_DIR/boot/dtbs" ]; then
+            execute_command "sudo cp -r \"$ROOTFS_MOUNT_DIR/boot/dtbs\"/* \"$BOOT_MOUNT_DIR/\"" "Copying dtbs directory" "false"
+            log_success "Device tree files copied from dtbs directory"
+        else
+            log_warning "No dtb files found in rootfs/boot/"
+        fi
     else
+        # 复制第一个匹配的dtb文件到boot根目录
+        execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/" "Copying dtb file" "false"
+        log_success "Device tree file copied"
+    fi
+    
+    # Copy initrd image (使用稳健的通配符处理)
+    log_info "Copying initrd image..."
+    set -- $ROOTFS_MOUNT_DIR/boot/initrd.img-*
+    if [ $# -eq 0 ]; then
         log_error "Initrd image not found at expected path: $ROOTFS_MOUNT_DIR/boot/initrd.img-*"
         exit 1
     fi
+    execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/initramfs" "Copying initrd image" "false"
     
-    # Copy vmlinuz (严格按照用户要求的命令)
+    # Copy vmlinuz (使用稳健的通配符处理)
     log_info "Copying kernel image..."
-    if ls "$ROOTFS_MOUNT_DIR/boot/vmlinuz-*" 1> /dev/null 2>&1; then
-        execute_command "sudo cp '$ROOTFS_MOUNT_DIR/boot/vmlinuz-*' '$BOOT_MOUNT_DIR/linux.efi'" "Copying kernel image" "false"
-    else
+    set -- $ROOTFS_MOUNT_DIR/boot/vmlinuz-*
+    if [ $# -eq 0 ]; then
         log_error "Kernel image not found at expected path: $ROOTFS_MOUNT_DIR/boot/vmlinuz-*"
         exit 1
+    fi
+    execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/linux.efi" "Copying kernel image" "false"
+    
+    # Copy kernel config (如果存在)
+    log_info "Copying kernel config..."
+    set -- $ROOTFS_MOUNT_DIR/boot/config-*
+    if [ $# -eq 0 ]; then
+        log_warning "Kernel config not found at expected path: $ROOTFS_MOUNT_DIR/boot/config-*"
+    else
+        execute_command "sudo cp \"$1\" $BOOT_MOUNT_DIR/" "Copying kernel config" "false"
+        log_success "Kernel config copied"
     fi
     
     log_info "Displaying boot directory contents for verification:"
