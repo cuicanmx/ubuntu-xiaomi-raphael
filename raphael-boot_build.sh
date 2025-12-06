@@ -235,7 +235,77 @@ main() {
     
     log_step_complete "Kernel files copied successfully"
     
-    # Step 5: Unmount images
+    # Step 5: Update boot configuration with rootfs UUID
+    log_step_start "🔄 Updating boot configuration"
+    
+    BOOT_CONFIG_DIR="$BOOT_MOUNT_DIR/loader/entries"
+    BOOT_CONFIG_FILE="$BOOT_CONFIG_DIR/ubuntu.conf"
+    
+    if [ -f "$BOOT_CONFIG_FILE" ]; then
+        log_info "✅ Found: $BOOT_CONFIG_FILE"
+        
+        # Get rootfs image UUID
+        log_info "Extracting UUID from rootfs image: $ROOTFS_IMAGE"
+        ROOTFS_UUID=$(sudo blkid -s UUID -o value "$ROOTFS_IMAGE")
+        
+        if [ -n "$ROOTFS_UUID" ]; then
+            log_success "Rootfs UUID: $ROOTFS_UUID"
+            
+            # Check current boot entry content
+            log_info "📋 Current boot entry content:"
+            cat "$BOOT_CONFIG_FILE"
+            
+            # Update UUID in boot configuration
+            log_info "Updating UUID in boot configuration..."
+            sudo sed -i "s/root=UUID=[a-f0-9\-]*/root=UUID=$ROOTFS_UUID/g" "$BOOT_CONFIG_FILE"
+            
+            # Verify the update
+            log_info "✅ Updated boot entry:"
+            cat "$BOOT_CONFIG_FILE"
+            
+            # Check kernel version in boot entry
+            if grep -q "$KERNEL_VERSION" "$BOOT_CONFIG_FILE"; then
+                log_success "✅ Kernel version in boot entry matches expected: $KERNEL_VERSION"
+            else
+                log_warning "⚠️ Kernel version in boot entry does not match expected: $KERNEL_VERSION"
+                log_info "Current boot entry configuration:"
+                grep -E "title|sort-key|linux|initrd|options" "$BOOT_CONFIG_FILE"
+            fi
+        else
+            log_warning "⚠️ Could not extract UUID from rootfs image"
+            log_info "Boot configuration will use existing UUID"
+        fi
+    else
+        log_warning "⚠️ Boot configuration file not found: $BOOT_CONFIG_FILE"
+        log_info "Creating default boot configuration..."
+        
+        # Create directory if it doesn't exist
+        sudo mkdir -p "$BOOT_CONFIG_DIR"
+        
+        # Get rootfs UUID
+        ROOTFS_UUID=$(sudo blkid -s UUID -o value "$ROOTFS_IMAGE" 2>/dev/null)
+        
+        # Create default boot configuration
+        sudo cat > /tmp/ubuntu.conf.tmp << EOF
+title	 Ubuntu
+sort-key ubuntu
+linux	 linux.efi
+initrd	 initramfs
+
+options console=tty0 loglevel=3 splash root=UUID=${ROOTFS_UUID:-ee8d3593-59b1-480e-a3b6-4fefb17ee7d8} rw
+EOF
+        
+        sudo cp /tmp/ubuntu.conf.tmp "$BOOT_CONFIG_FILE"
+        rm -f /tmp/ubuntu.conf.tmp
+        
+        log_success "✅ Created default boot configuration"
+        log_info "Boot configuration file content:"
+        cat "$BOOT_CONFIG_FILE"
+    fi
+    
+    log_step_complete "Boot configuration updated"
+    
+    # Step 6: Unmount images
     log_step_start "🔓 Unmounting images"
     
     execute_quiet "sudo umount '$ROOTFS_MOUNT_DIR'" "Unmounting rootfs image"

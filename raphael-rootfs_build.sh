@@ -204,13 +204,6 @@ main() {
     execute_command "rm -d '$ROOTDIR' 2>/dev/null || true" "删除根目录"
     execute_command "rm -f ubuntu-base-$UBUNTU_VERSION-base-arm64.tar.gz 2>/dev/null || true" "删除Ubuntu基础系统归档文件"
     
-    # 压缩根文件系统镜像
-    log_info "正在压缩根文件系统镜像..."
-    execute_command "7z a '${ROOTFS_IMG%.img}.7z' '$ROOTFS_IMG' >/dev/null" "压缩根文件系统镜像为7z格式"
-    
-    log_success "RootFS构建成功完成！"
-    echo "根文件系统镜像: $ROOTFS_IMG"
-    echo "压缩后的镜像: ${ROOTFS_IMG%.img}.7z"
 }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] && main "$@"
